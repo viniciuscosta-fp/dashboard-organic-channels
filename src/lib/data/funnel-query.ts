@@ -1,4 +1,4 @@
-import { FUNNEL_STAGES, type FunnelQuery, type FunnelSnapshot, type FunnelTotals } from './types'
+import { METRICS, type FunnelQuery, type FunnelSnapshot, type FunnelTotals } from './types'
 
 /**
  * Aplica os filtros de `FunnelQuery` em memória.
@@ -27,16 +27,22 @@ export function applyFunnelQuery(
     .sort((a, b) => a.date.localeCompare(b.date) || a.channel.localeCompare(b.channel))
 }
 
-/** Soma cada etapa do funil ao longo de todos os snapshots. */
-export function sumFunnelStages(snapshots: readonly FunnelSnapshot[]): FunnelTotals {
+/**
+ * Soma cada métrica ao longo de todos os snapshots.
+ *
+ * A receita é somada em ponto flutuante, o que acumula erro de centavo em
+ * séries longas. Para exibição isso é irrelevante — o formatador arredonda em
+ * reais — mas não use este total como base de conciliação financeira.
+ */
+export function sumMetrics(snapshots: readonly FunnelSnapshot[]): FunnelTotals {
   return snapshots.reduce<FunnelTotals>(
     (totals, snapshot) => {
-      for (const stage of FUNNEL_STAGES) {
-        totals[stage] += snapshot[stage]
+      for (const metric of METRICS) {
+        totals[metric] += snapshot[metric]
       }
       return totals
     },
-    { mqls: 0, opportunities: 0, customers: 0 },
+    { revenue: 0, mqls: 0, opportunities: 0, customers: 0 },
   )
 }
 

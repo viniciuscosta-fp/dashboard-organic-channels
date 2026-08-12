@@ -10,7 +10,7 @@ import {
 } from '../business-days'
 import type { DateRange } from '../period'
 import { listChannels } from './funnel-query'
-import { FUNNEL_STAGES, type FunnelSnapshot, type FunnelStage, type MonthlyGoal } from './types'
+import { METRICS, type FunnelSnapshot, type Metric, type MonthlyGoal } from './types'
 
 /**
  * Inteligência de aderência a meta.
@@ -89,8 +89,8 @@ export function dataRangeFor(range: DateRange, today: string): DateRange {
   }
 }
 
-export interface StageAdherence {
-  stage: FunnelStage
+export interface MetricAdherence {
+  metric: Metric
   actual: number
   /** Meta rateada para o período inteiro. */
   goalPeriod: number
@@ -108,13 +108,13 @@ export interface StageAdherence {
   projectedAttainment: number | null
   status: GoalStatus
   confidence: ProjectionConfidence
-  /** Meses do período sem meta cadastrada para esta etapa e canal. */
+  /** Meses do período sem meta cadastrada para esta métrica e canal. */
   missingGoalMonths: IsoMonth[]
 }
 
 export interface ChannelAdherence {
   channel: string
-  stages: StageAdherence[]
+  metrics: MetricAdherence[]
 }
 
 /** Um dia útil do período na curva de burn-up. */
@@ -133,9 +133,9 @@ export interface AdherenceReport {
   /** Consolidado de todos os canais. */
   total: ChannelAdherence
   byChannel: ChannelAdherence[]
-  /** Curva acumulada do consolidado, por etapa. */
-  burnup: Record<FunnelStage, BurnupPoint[]>
-  /** União dos meses sem meta, em qualquer canal ou etapa. */
+  /** Curva acumulada do consolidado, por métrica. */
+  burnup: Record<Metric, BurnupPoint[]>
+  /** União dos meses sem meta, em qualquer canal ou métrica. */
   missingGoalMonths: IsoMonth[]
 }
 
@@ -186,8 +186,8 @@ export function computeTiming(
 
 type GoalKey = string
 
-function goalKey(channel: string, stage: FunnelStage, month: IsoMonth): GoalKey {
-  return `${channel}|${stage}|${month}`
+function goalKey(channel: string, metric: Metric, month: IsoMonth): GoalKey {
+  return `${channel}|${metric}|${month}`
 }
 
 export type GoalIndex = Map<GoalKey, number>
@@ -196,7 +196,7 @@ export function indexGoals(goals: readonly MonthlyGoal[]): GoalIndex {
   const index: GoalIndex = new Map()
 
   for (const goal of goals) {
-    const key = goalKey(goal.channel, goal.stage, goal.month)
+    const key = goalKey(goal.channel, goal.metric, goal.month)
     // Linha duplicada na planilha soma, em vez de a última silenciosamente vencer.
     index.set(key, (index.get(key) ?? 0) + goal.target)
   }
@@ -223,7 +223,7 @@ export interface ProratedGoal {
 export function prorateGoal(
   index: GoalIndex,
   channels: readonly string[],
-  stage: FunnelStage,
+  metric: Metric,
   daysByMonth: Map<IsoMonth, number>,
 ): ProratedGoal {
   let target = 0
@@ -237,7 +237,7 @@ export function prorateGoal(
     let found = false
 
     for (const channel of channels) {
-      const value = index.get(goalKey(channel, stage, month))
+      const value = index.get(goalKey(channel, metric, month))
       if (value !== undefined) {
         monthlyTarget += value
         found = true
@@ -267,7 +267,7 @@ export function prorateGoal(
  */
 export function recentDailyRate(
   snapshots: readonly FunnelSnapshot[],
-  stage: FunnelStage,
+  metric: Metric,
   trendWindow: readonly string[],
 ): number {
   if (trendWindow.length === 0) return 0
@@ -276,7 +276,7 @@ export function recentDailyRate(
   let total = 0
 
   for (const snapshot of snapshots) {
-    if (window.has(snapshot.date)) total += snapshot[stage]
+    if (window.has(snapshot.date)) total += snapshot[metric]
   }
 
   return total / trendWindow.length
@@ -289,22 +289,22 @@ export function classifyStatus(ratio: number | null): GoalStatus {
   return 'risco'
 }
 
-function buildStageAdherence(
+function buildMetricAdherence(
   periodSnapshots: readonly FunnelSnapshot[],
   trendSnapshots: readonly FunnelSnapshot[],
   index: GoalIndex,
   channels: readonly string[],
-  stage: FunnelStage,
+  metric: Metric,
   timing: PeriodTiming,
-): StageAdherence {
-  const actual = periodSnapshots.reduce((sum, snapshot) => sum + snapshot[stage], 0)
+): MetricAdherence {
+  const actual = periodSnapshots.reduce((sum, snapshot) => sum + snapshot[metric], 0)
 
-  const period = prorateGoal(index, channels, stage, timing.daysByMonthTotal)
-  const toDate = prorateGoal(index, channels, stage, timing.daysByMonthElapsed)
+  const period = prorateGoal(index, channels, metric, timing.daysByMonthTotal)
+  const toDate = prorateGoal(index, channels, metric, timing.daysByMonthElapsed)
 
   // O ritmo olha o histórico completo, inclusive antes do período: o que
   // interessa é a velocidade do canal, não a do recorte selecionado.
-  const rate = recentDailyRate(trendSnapshots, stage, timing.trendWindow)
+  const rate = recentDailyRate(trendSnapshots, metric, timing.trendWindow)
 
   let confidence: ProjectionConfidence
   let projection: number | null
@@ -330,7 +330,7 @@ function buildStageAdherence(
   const statusRatio = projectedAttainment ?? (toDate.target > 0 ? actual / toDate.target : null)
 
   return {
-    stage,
+    metric,
     actual,
     goalPeriod: period.target,
     goalToDate: toDate.target,
@@ -358,13 +358,13 @@ export function buildBurnup(
   periodSnapshots: readonly FunnelSnapshot[],
   index: GoalIndex,
   channels: readonly string[],
-  stage: FunnelStage,
+  metric: Metric,
   timing: PeriodTiming,
   dailyRate: number | null,
 ): BurnupPoint[] {
   const byDate = new Map<string, number>()
   for (const snapshot of periodSnapshots) {
-    byDate.set(snapshot.date, (byDate.get(snapshot.date) ?? 0) + snapshot[stage])
+    byDate.set(snapshot.date, (byDate.get(snapshot.date) ?? 0) + snapshot[metric])
   }
 
   const running = new Map<IsoMonth, number>()
@@ -380,7 +380,7 @@ export function buildBurnup(
     return {
       date,
       actual: elapsed ? cumulative : null,
-      goal: prorateGoal(index, channels, stage, running).target,
+      goal: prorateGoal(index, channels, metric, running).target,
       projected: null,
     }
   })
@@ -441,8 +441,8 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
 
   const total: ChannelAdherence = {
     channel: 'total',
-    stages: FUNNEL_STAGES.map((stage) =>
-      buildStageAdherence(inPeriod, snapshots, index, channels, stage, timing),
+    metrics: METRICS.map((metric) =>
+      buildMetricAdherence(inPeriod, snapshots, index, channels, metric, timing),
     ),
   }
 
@@ -452,13 +452,13 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
 
     return {
       channel,
-      stages: FUNNEL_STAGES.map((stage) =>
-        buildStageAdherence(
+      metrics: METRICS.map((metric) =>
+        buildMetricAdherence(
           ofChannel(inPeriod),
           ofChannel(snapshots),
           index,
           [channel],
-          stage,
+          metric,
           timing,
         ),
       ),
@@ -468,24 +468,24 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
   const missingGoalMonths = [
     ...new Set(
       [total, ...byChannel].flatMap((entry) =>
-        entry.stages.flatMap((stage) => stage.missingGoalMonths),
+        entry.metrics.flatMap((metric) => metric.missingGoalMonths),
       ),
     ),
   ].sort()
 
   const burnup = Object.fromEntries(
-    total.stages.map((stage) => [
-      stage.stage,
+    total.metrics.map((metric) => [
+      metric.metric,
       buildBurnup(
         inPeriod,
         index,
         channels,
-        stage.stage,
+        metric.metric,
         timing,
-        stage.projection === null ? null : stage.recentDailyRate,
+        metric.projection === null ? null : metric.recentDailyRate,
       ),
     ]),
-  ) as Record<FunnelStage, BurnupPoint[]>
+  ) as Record<Metric, BurnupPoint[]>
 
   return { timing, total, byChannel, burnup, missingGoalMonths }
 }

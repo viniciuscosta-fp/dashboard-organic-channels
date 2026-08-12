@@ -11,9 +11,9 @@ import {
   prorateGoal,
   recentDailyRate,
   type ChannelAdherence,
-  type StageAdherence,
+  type MetricAdherence,
 } from './goal-math'
-import type { FunnelSnapshot, MonthlyGoal } from './types'
+import type { FunnelSnapshot, FunnelTotals, MonthlyGoal } from './types'
 
 /**
  * Agosto de 2026 tem 21 dias úteis e começa num sábado, o que faz dele um bom
@@ -27,20 +27,20 @@ function daily(
   from: string,
   to: string,
   channel: string,
-  perDay: Partial<FunnelSnapshot> = {},
+  perDay: Partial<FunnelTotals> = {},
 ): FunnelSnapshot[] {
   return listBusinessDays(from, to).map((date) => ({
     date,
     channel,
-    mqls: 0,
-    opportunities: 0,
-    customers: 0,
-    ...perDay,
+    revenue: perDay.revenue ?? 0,
+    mqls: perDay.mqls ?? 0,
+    opportunities: perDay.opportunities ?? 0,
+    customers: perDay.customers ?? 0,
   }))
 }
 
 function goal(month: string, channel: string, target: number): MonthlyGoal {
-  return { month, channel, stage: 'customers', target }
+  return { month, channel, metric: 'customers', target }
 }
 
 describe('computeTiming', () => {
@@ -230,9 +230,9 @@ describe('lastDataDate', () => {
   it('encontra a data mais recente independentemente da ordem', () => {
     expect(
       lastDataDate([
-        { date: '2026-08-05', channel: 'a', mqls: 0, opportunities: 0, customers: 0 },
-        { date: '2026-08-12', channel: 'a', mqls: 0, opportunities: 0, customers: 0 },
-        { date: '2026-08-03', channel: 'a', mqls: 0, opportunities: 0, customers: 0 },
+        ...daily('2026-08-05', '2026-08-05', 'a'),
+        ...daily('2026-08-12', '2026-08-12', 'a'),
+        ...daily('2026-08-03', '2026-08-03', 'a'),
       ]),
     ).toBe('2026-08-12')
   })
@@ -253,26 +253,26 @@ describe('computeAdherence', () => {
     })
   }
 
-  function customers(entry: ChannelAdherence): StageAdherence {
-    return entry.stages.find((stage) => stage.stage === 'customers')!
+  function customers(entry: ChannelAdherence): MetricAdherence {
+    return entry.metrics.find((metric) => metric.metric === 'customers')!
   }
 
   it('no ritmo exato: projeta a meta cheia e zera o gap', () => {
-    const stage = customers(report(1, '2026-08-14').total)
+    const metric = customers(report(1, '2026-08-14').total)
 
-    expect(stage.actual).toBe(10)
-    expect(stage.goalPeriod).toBe(21)
-    expect(stage.goalToDate).toBe(10)
-    expect(stage.gap).toBe(0)
-    expect(stage.recentDailyRate).toBe(1)
-    expect(stage.projection).toBe(21)
-    expect(stage.projectedAttainment).toBe(1)
-    expect(stage.status).toBe('no-ritmo')
-    expect(stage.confidence).toBe('normal')
+    expect(metric.actual).toBe(10)
+    expect(metric.goalPeriod).toBe(21)
+    expect(metric.goalToDate).toBe(10)
+    expect(metric.gap).toBe(0)
+    expect(metric.recentDailyRate).toBe(1)
+    expect(metric.projection).toBe(21)
+    expect(metric.projectedAttainment).toBe(1)
+    expect(metric.status).toBe('no-ritmo')
+    expect(metric.confidence).toBe('normal')
   })
 
   it('ritmo abaixo do necessário cai em risco, com gap negativo', () => {
-    const stage = customers(
+    const metric = customers(
       computeAdherence({
         snapshots: [
           ...daily('2026-08-01', '2026-08-07', 'organic-search', { customers: 1 }),
@@ -283,15 +283,15 @@ describe('computeAdherence', () => {
       }).total,
     )
 
-    expect(stage.actual).toBe(5)
-    expect(stage.gap).toBe(-5)
-    expect(stage.recentDailyRate).toBe(0.5)
-    expect(stage.projection).toBe(5 + 0.5 * 11)
-    expect(stage.status).toBe('risco')
+    expect(metric.actual).toBe(5)
+    expect(metric.gap).toBe(-5)
+    expect(metric.recentDailyRate).toBe(0.5)
+    expect(metric.projection).toBe(5 + 0.5 * 11)
+    expect(metric.status).toBe('risco')
   })
 
   it('projeção entre 80% e 100% cai em atenção', () => {
-    const stage = customers(
+    const metric = customers(
       computeAdherence({
         snapshots: [
           ...daily('2026-08-01', '2026-08-13', 'organic-search', { customers: 1 }),
@@ -304,19 +304,19 @@ describe('computeAdherence', () => {
     )
 
     // 9 em 10 dias úteis: projeta 9 + 0,9 × 11 = 18,9, ou 90% de 21.
-    expect(stage.projectedAttainment).toBeCloseTo(0.9)
-    expect(stage.status).toBe('atencao')
+    expect(metric.projectedAttainment).toBeCloseTo(0.9)
+    expect(metric.status).toBe('atencao')
   })
 
   it('não projeta com menos de uma semana de histórico', () => {
-    const stage = customers(report(1, '2026-08-05').total)
+    const metric = customers(report(1, '2026-08-05').total)
 
-    expect(stage.confidence).toBe('insuficiente')
-    expect(stage.projection).toBeNull()
-    expect(stage.projectedAttainment).toBeNull()
+    expect(metric.confidence).toBe('insuficiente')
+    expect(metric.projection).toBeNull()
+    expect(metric.projectedAttainment).toBeNull()
     // Sem projeção, o status compara realizado com a meta proporcional.
-    expect(stage.goalToDate).toBe(3)
-    expect(stage.status).toBe('no-ritmo')
+    expect(metric.goalToDate).toBe(3)
+    expect(metric.status).toBe('no-ritmo')
   })
 
   it('usa o histórico anterior ao período para calcular o ritmo', () => {
@@ -330,30 +330,30 @@ describe('computeAdherence', () => {
       range: AGOSTO,
     })
 
-    const stage = customers(total)
+    const metric = customers(total)
 
     // Só os três dias úteis de agosto entram no realizado.
-    expect(stage.actual).toBe(6)
+    expect(metric.actual).toBe(6)
     // Mas a janela de dez dias úteis alcança julho, então há ritmo para projetar.
-    expect(stage.recentDailyRate).toBe(2)
-    expect(stage.confidence).not.toBe('insuficiente')
-    expect(stage.projection).toBe(6 + 2 * 18)
+    expect(metric.recentDailyRate).toBe(2)
+    expect(metric.confidence).not.toBe('insuficiente')
+    expect(metric.projection).toBe(6 + 2 * 18)
   })
 
   it('período fechado não extrapola: a projeção é o próprio realizado', () => {
-    const stage = customers(report(1, '2026-08-31').total)
+    const metric = customers(report(1, '2026-08-31').total)
 
-    expect(stage.confidence).toBe('periodo-fechado')
-    expect(stage.projection).toBe(21)
-    expect(stage.projection).toBe(stage.actual)
-    expect(stage.status).toBe('no-ritmo')
+    expect(metric.confidence).toBe('periodo-fechado')
+    expect(metric.projection).toBe(21)
+    expect(metric.projection).toBe(metric.actual)
+    expect(metric.status).toBe('no-ritmo')
   })
 
   it('marca baixa confiança quando pouco do período passou', () => {
     // Setembro de 2026 tem 22 dias úteis; 10 decorridos ficam acima de 30%,
     // então o cenário de baixa confiança precisa de um período mais longo.
     const trimestre = { from: '2026-07-01', to: '2026-09-30' }
-    const stage = customers(
+    const metric = customers(
       computeAdherence({
         snapshots: daily('2026-07-01', '2026-07-15', 'organic-search', { customers: 1 }),
         goals: [goal('2026-07', 'organic-search', 23)],
@@ -361,8 +361,8 @@ describe('computeAdherence', () => {
       }).total,
     )
 
-    expect(stage.confidence).toBe('baixa')
-    expect(stage.projection).not.toBeNull()
+    expect(metric.confidence).toBe('baixa')
+    expect(metric.projection).not.toBeNull()
   })
 
   it('canal com meta e sem resultado aparece zerado, não some', () => {

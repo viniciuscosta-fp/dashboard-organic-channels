@@ -7,6 +7,15 @@ const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 /**
+ * Uma linha crua da planilha.
+ *
+ * Com `UNFORMATTED_VALUE`, número vem como number e texto como string — a
+ * célula decide o tipo, não a API.
+ */
+export type SheetCell = string | number | boolean | null | undefined
+export type SheetRow = SheetCell[]
+
+/**
  * Cliente compartilhado de leitura do Google Sheets.
  *
  * Usa a REST API direto em vez do pacote `googleapis` porque aquele pacote
@@ -57,17 +66,37 @@ async function getAccessToken(): Promise<string> {
 }
 
 /**
+ * Como a API deve renderizar as células.
+ *
+ * `UNFORMATTED_VALUE` é obrigatório, não preferência. O padrão da API é
+ * `FORMATTED_VALUE`, que devolve o **texto exibido**: uma célula de receita
+ * formatada em reais voltaria como `"R$ 1.234,56"`, e — pior porque silencioso —
+ * um inteiro com separador de milhar voltaria como `"1.825"`, que a coerção
+ * numérica interpreta como 1,825. O dashboard mostraria mil vezes menos sem
+ * erro nenhum.
+ *
+ * `FORMATTED_STRING` para data protege o outro lado: sem isso, uma célula que o
+ * Sheets tenha tipado como data volta como número serial em vez de ISO. A
+ * planilha ainda deve manter a coluna `date` como texto simples — ver
+ * docs/data-contract.md.
+ */
+const RENDER_OPTIONS = 'valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING'
+
+/**
  * Lê um intervalo em notação A1 e devolve as linhas cruas.
+ *
+ * Os valores chegam como `string | number | boolean` conforme o tipo da célula;
+ * os parsers normalizam para texto antes de validar.
  *
  * Não cacheia: o cache é responsabilidade da camada de serviço.
  */
-export async function fetchSheetValues(range: string): Promise<string[][]> {
+export async function fetchSheetValues(range: string): Promise<SheetRow[]> {
   const env = getEnv()
   const token = await getAccessToken()
 
   const url = `${SHEETS_API}/${env.FUNNEL_SHEET_ID}/values/${encodeURIComponent(
     range,
-  )}?majorDimension=ROWS`
+  )}?majorDimension=ROWS&${RENDER_OPTIONS}`
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -85,6 +114,6 @@ export async function fetchSheetValues(range: string): Promise<string[][]> {
     throw new FunnelDataError(`Google Sheets respondeu ${response.status}.${hint}`, 'sheets')
   }
 
-  const payload = (await response.json()) as { values?: string[][] }
+  const payload = (await response.json()) as { values?: SheetRow[] }
   return payload.values ?? []
 }

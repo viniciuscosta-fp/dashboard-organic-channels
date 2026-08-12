@@ -18,10 +18,13 @@ const envSchema = z
     /** ID da planilha (o trecho entre /d/ e /edit na URL). */
     FUNNEL_SHEET_ID: z.string().min(1).optional(),
     /** Intervalo da aba do funil em notação A1, incluindo a linha de cabeçalho. */
-    FUNNEL_SHEET_RANGE: z.string().min(1).default('funil!A:E'),
+    FUNNEL_SHEET_RANGE: z.string().min(1).default('funil!A:F'),
 
     /** Intervalo da aba de metas, na mesma planilha. */
     GOALS_SHEET_RANGE: z.string().min(1).default('metas!A:D'),
+
+    /** Intervalo da aba de cadastro de canais, na mesma planilha. */
+    CHANNELS_SHEET_RANGE: z.string().min(1).default('canais!A:C'),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== 'sheets') return

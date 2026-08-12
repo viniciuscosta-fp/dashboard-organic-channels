@@ -1,16 +1,29 @@
 import { FunnelDataError } from './funnel-repository'
+import type { SheetCell } from './sheets-client'
 
 /**
  * Utilidades compartilhadas pelos parsers de abas da planilha.
  *
- * As abas do funil e das metas têm colunas diferentes, mas as mesmas regras de
- * leitura: cabeçalho obrigatório, mapeamento por nome e tolerância a linha em
- * branco no fim do intervalo.
+ * As abas do funil, das metas e dos canais têm colunas diferentes, mas as
+ * mesmas regras de leitura: cabeçalho obrigatório, mapeamento por nome e
+ * tolerância a linha em branco no fim do intervalo.
  */
 
-/** Linha totalmente vazia — normal no fim de um intervalo aberto como `A:E`. */
-export function isBlankRow(row: readonly string[]): boolean {
-  return row.every((cell) => (cell ?? '').trim() === '')
+/**
+ * Normaliza uma célula para texto aparado.
+ *
+ * A API devolve número como number e texto como string, conforme o tipo da
+ * célula. Os schemas coagem a partir de texto, então tudo passa por aqui
+ * primeiro — inclusive `0`, que precisa virar `"0"` e não sumir.
+ */
+export function cellText(cell: SheetCell): string {
+  if (cell === null || cell === undefined) return ''
+  return String(cell).trim()
+}
+
+/** Linha totalmente vazia — normal no fim de um intervalo aberto como `A:F`. */
+export function isBlankRow(row: readonly SheetCell[]): boolean {
+  return row.every((cell) => cellText(cell) === '')
 }
 
 /**
@@ -21,7 +34,7 @@ export function isBlankRow(row: readonly string[]): boolean {
  * comparação ignora caixa e espaços nas bordas da célula.
  */
 export function buildColumnIndex<Column extends string>(
-  header: readonly string[] | undefined,
+  header: readonly SheetCell[] | undefined,
   required: readonly Column[],
   sheetLabel: string,
 ): Record<Column, number> {
@@ -32,7 +45,7 @@ export function buildColumnIndex<Column extends string>(
     )
   }
 
-  const normalized = header.map((cell) => (cell ?? '').trim().toLowerCase())
+  const normalized = header.map((cell) => cellText(cell).toLowerCase())
   const index = {} as Record<Column, number>
   const missing: string[] = []
 
