@@ -5,56 +5,65 @@ cada passo valida o anterior.
 
 O formato exato das colunas está em [`data-contract.md`](data-contract.md).
 
----
+## Resumo
 
-## 1. Criar a planilha
+| Passo | O que fazer                                    | Onde          |
+| ----- | ---------------------------------------------- | ------------- |
+| 1     | Criar planilha em branco e colar o script      | Google Sheets |
+| 2     | Rodar `prepararPlanilha()` — cria as três abas | Apps Script   |
+| 3     | Configurar a Script Property `WEBHOOK_URL`     | Apps Script   |
+| 4     | Service account e compartilhar a planilha      | Google Cloud  |
+| 5     | Carga histórica, em etapas                     | Apps Script   |
+| 6     | Ligar os gatilhos diário e semanal             | Apps Script   |
+| 7     | Preencher as metas do mês                      | Google Sheets |
+| 8     | Conferir de ponta a ponta                      | Dashboard     |
 
-Uma planilha do Google com **três abas**, nomeadas exatamente assim:
-
-### Aba `funil`
-
-Cabeçalho na linha 1:
-
-```
-date | channel | revenue | mqls | opportunities | customers
-```
-
-**Formate a coluna `date` como texto simples** — selecione a coluna A e vá em
-_Formatar → Número → Texto sem formatação_.
-
-Este passo não é cosmético. Se o Sheets tipar a célula como data, a API a
-devolve como número serial em vez de `2026-08-12`, e o dashboard rejeita a
-planilha inteira. O Apps Script reforça esse formato, mas fazer aqui evita a
-primeira execução falhar.
-
-### Aba `metas`
-
-```
-month | channel | metric | target
-```
-
-### Aba `canais`
-
-```
-channel | label | order
-```
-
-Preencha com os cinco canais:
-
-| channel            | label                           | order |
-| ------------------ | ------------------------------- | ----- |
-| `organic_site`     | Organic Search Site             | 1     |
-| `blog_fluencypass` | Organic Search (Blog - FP)      | 2     |
-| `compare`          | Organic Search (Blog - Compare) | 3     |
-| `brand`            | Organic Search (Brand)          | 4     |
-| `ai_referrals`     | Referências de IA               | 5     |
-
-A coluna `label` é o nome que aparece na tela. Mudar aqui muda o dashboard sem
-precisar de deploy — é por isso que essa aba existe.
+Você não precisa criar aba nem digitar cabeçalho em lugar nenhum: o passo 2 faz
+isso. Os passos 1 a 4 levam poucos minutos; o 5 é o que demora, e é o único que
+exige atenção aos números.
 
 ---
 
-## 2. Dar acesso ao dashboard
+## 1. Criar a planilha e colar o script
+
+1. Crie uma planilha do Google **em branco**. O nome é livre.
+2. _Extensões → Apps Script_. Apague o conteúdo padrão e cole
+   [`scripts/apps-script/coleta-diaria.js`](../scripts/apps-script/coleta-diaria.js).
+3. Salve.
+
+Não é preciso criar abas nem digitar cabeçalho: o próximo passo faz isso.
+
+## 2. Montar as abas
+
+No editor do Apps Script, selecione a função **`prepararPlanilha`** e clique em
+_Executar_. Autorize os acessos quando o Google pedir — é a primeira execução.
+
+Isso cria as três abas com o cabeçalho certo, formata a coluna `date` como texto
+simples e preenche o cadastro dos cinco canais.
+
+É seguro rodar de novo: aba existente não é recriada e dado existente não é
+tocado. Rodar depois de acrescentar um canal em `CANAIS` sincroniza a aba
+`canais` sem mexer nos rótulos que você tenha ajustado.
+
+> **Por que não importar um xlsx pronto?** Porque a coluna `date` precisa ser
+> texto simples, e conversão de arquivo não garante isso. Como célula de data, a
+> API do Google devolve número serial em vez de `2026-08-12`, e o dashboard
+> rejeita a planilha inteira. Criar pelo script elimina esse risco.
+
+Confira que as abas `funil`, `metas` e `canais` apareceram, e que a `canais` tem
+cinco linhas. A coluna `label` é o nome que aparece na tela — mudar ali muda o
+dashboard sem precisar de deploy.
+
+## 3. Apontar o script para o webhook
+
+Em _Configurações do projeto → Propriedades do script_, adicione a propriedade
+`WEBHOOK_URL` com a URL do webhook do workflow "MKT · Channels · Métricas por
+Canal".
+
+A URL fica aqui e **não** no código, porque o repositório é versionado e o
+endpoint é interno.
+
+## 4. Dar acesso ao dashboard
 
 1. No Google Cloud, crie uma **service account** e habilite a **Google Sheets API**.
 2. Gere uma chave JSON para essa conta.
@@ -66,26 +75,12 @@ O dashboard só lê. Nenhuma rota da aplicação escreve na planilha.
 
 ---
 
-## 3. Instalar o Apps Script
-
-Na planilha, _Extensões → Apps Script_. Apague o conteúdo padrão e cole
-[`scripts/apps-script/coleta-diaria.js`](../scripts/apps-script/coleta-diaria.js).
-
-Depois, em _Configurações do projeto → Propriedades do script_, adicione a
-propriedade `WEBHOOK_URL` com a URL do webhook do workflow "MKT · Channels ·
-Métricas por Canal".
-
-A URL fica aqui e **não** no código, porque o repositório é versionado e o
-endpoint é interno.
-
----
-
-## 4. Carga histórica, em etapas
+## 5. Carga histórica, em etapas
 
 O roteiro é fatiado de propósito: um erro de mapeamento aparece em cinco linhas
 em vez de novecentas. Não pule etapas — cada uma valida algo diferente.
 
-### 4.1 Um dia
+### 5.1 Um dia
 
 No editor, rode `coletarOntem()`. Autorize os acessos quando pedido.
 
@@ -96,21 +91,21 @@ para aquele dia.
 É aqui que aparece erro de canal, de fuso ou de coluna. Se os números não
 baterem, pare e investigue antes de seguir.
 
-### 4.2 A mesma execução, de novo
+### 5.2 A mesma execução, de novo
 
 Rode `coletarOntem()` outra vez.
 
 Continua com cinco linhas, não dez. Este é o teste do upsert — o que garante
 que reexecutar qualquer intervalo é seguro.
 
-### 4.3 Uma semana
+### 5.3 Uma semana
 
 Rode `backfill('2026-08-03', '2026-08-09')` com as datas que você quiser.
 
 Confira o volume (7 dias × 5 canais = 35 linhas) e se algum dia ficou de fora.
 Nesta escala tudo cabe numa execução.
 
-### 4.4 Um mês
+### 5.4 Um mês
 
 Rode `backfill` sobre um mês inteiro. Aqui a retomada provavelmente entra em
 ação: o script pausa perto dos 4,5 minutos, grava onde parou e agenda a
@@ -121,14 +116,14 @@ Acompanhe em _Execuções_. Você deve ver `backfill` seguido de uma ou mais
 
 Se precisar interromper, rode `cancelarBackfill()`.
 
-### 4.5 O resto do período
+### 5.5 O resto do período
 
 Só depois que os quatro passos acima estiverem limpos. Pode rodar de uma vez —
 a retomada cuida do resto.
 
 ---
 
-## 5. Ligar os gatilhos
+## 6. Ligar os gatilhos
 
 Por último, em _Acionadores_:
 
@@ -146,7 +141,7 @@ congelaria no primeiro valor coletado.
 
 ---
 
-## 6. Preencher as metas
+## 7. Preencher as metas
 
 Na aba `metas`, uma linha por mês, canal e métrica:
 
@@ -163,7 +158,7 @@ nada.
 
 ---
 
-## 7. Conferir de ponta a ponta
+## 8. Conferir de ponta a ponta
 
 Com `DATA_SOURCE=sheets` no `.env.local`:
 
@@ -186,11 +181,12 @@ Rode `/data-check` no Claude Code, ou consulte a tabela de sintomas em
 
 Erros específicos da coleta:
 
-| Sintoma                                       | Causa provável                                      |
-| --------------------------------------------- | --------------------------------------------------- |
-| `Script Property WEBHOOK_URL não configurada` | Passo 3 incompleto                                  |
-| `HTTP 401` ou `HTTP 403` no log               | URL do webhook errada ou sem acesso                 |
-| `resposta sem os campos: …`                   | O webhook mudou o formato de saída                  |
-| Dia faltando na planilha                      | A chamada falhou; rode `backfill` naquele intervalo |
-| Execução interrompida sem retomar             | Rode `continuarBackfill()` à mão                    |
-| `A aba "funil" está sem as colunas: …`        | Cabeçalho renomeado ou removido                     |
+| Sintoma                                       | Causa provável                                                 |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| `Script Property WEBHOOK_URL não configurada` | Passo 3 incompleto                                             |
+| `HTTP 401` ou `HTTP 403` no log               | URL do webhook errada ou sem acesso                            |
+| `resposta sem os campos: …`                   | O webhook mudou o formato de saída                             |
+| Dia faltando na planilha                      | A chamada falhou; rode `backfill` naquele intervalo            |
+| Execução interrompida sem retomar             | Rode `continuarBackfill()` à mão                               |
+| `A aba "funil" está sem as colunas: …`        | Cabeçalho renomeado ou removido; rode `prepararPlanilha()`     |
+| Aba faltando ou cabeçalho apagado             | Rode `prepararPlanilha()` — ele recria sem tocar no que existe |

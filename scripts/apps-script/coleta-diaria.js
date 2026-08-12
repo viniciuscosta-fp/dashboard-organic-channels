@@ -25,17 +25,32 @@
 
 // ===================== CONFIGURAÇÃO =====================
 
-/** Aba de destino. Precisa casar com FUNNEL_SHEET_RANGE do dashboard. */
+/** Abas da planilha. Precisam casar com os intervalos configurados no dashboard. */
 var ABA_FUNIL = 'funil'
+var ABA_METAS = 'metas'
+var ABA_CANAIS = 'canais'
 
-/** Colunas gravadas, na ordem do contrato. Ver docs/data-contract.md. */
+/** Colunas de cada aba, na ordem do contrato. Ver docs/data-contract.md. */
 var COLUNAS = ['date', 'channel', 'revenue', 'mqls', 'opportunities', 'customers']
+var COLUNAS_METAS = ['month', 'channel', 'metric', 'target']
+var COLUNAS_CANAIS = ['channel', 'label', 'order']
 
 /** Linha de negócio consultada. O dashboard cobre apenas `professional`. */
 var LINHA = 'professional'
 
-/** Canais coletados. Incluir um canal novo é acrescentar a chave aqui. */
-var CANAIS = ['organic_site', 'blog_fluencypass', 'compare', 'brand', 'ai_referrals']
+/**
+ * Canais coletados, com o nome que aparece no dashboard.
+ *
+ * Incluir um canal novo é acrescentar uma entrada aqui e rodar
+ * `prepararPlanilha()`, que sincroniza a aba `canais`.
+ */
+var CANAIS = [
+  { chave: 'organic_site', rotulo: 'Organic Search Site' },
+  { chave: 'blog_fluencypass', rotulo: 'Organic Search (Blog - FP)' },
+  { chave: 'compare', rotulo: 'Organic Search (Blog - Compare)' },
+  { chave: 'brand', rotulo: 'Organic Search (Brand)' },
+  { chave: 'ai_referrals', rotulo: 'Referências de IA' },
+]
 
 /** Pausa entre chamadas, para não martelar a HubSpot. */
 var PAUSA_MS = 400
@@ -55,6 +70,43 @@ var PROP_WEBHOOK = 'WEBHOOK_URL'
 var PROP_BACKFILL = 'BACKFILL_ESTADO'
 
 // ===================== FUNÇÕES PÚBLICAS =====================
+
+/**
+ * Monta a planilha do zero: as três abas, com cabeçalho e formatação corretos.
+ *
+ * Rode uma vez, logo depois de colar este script numa planilha em branco. É
+ * seguro rodar de novo: aba que já existe não é recriada, e dado existente não
+ * é tocado — só o cadastro de canais é sincronizado com a lista `CANAIS`.
+ *
+ * Preferir esta função a importar um arquivo pronto tem um motivo concreto: a
+ * coluna `date` precisa ser **texto simples**, e conversão de xlsx ou CSV não
+ * garante isso. Como célula de data, a API devolve número serial e o dashboard
+ * não reconhece o valor.
+ */
+function prepararPlanilha() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet()
+
+  var funil = criarAba_(ss, ABA_FUNIL, COLUNAS)
+  // A coluna A inteira, e não só as linhas com dado: o formato precisa valer
+  // para o que a coleta ainda vai escrever.
+  funil.getRange('A:A').setNumberFormat('@')
+
+  criarAba_(ss, ABA_METAS, COLUNAS_METAS)
+
+  var canais = criarAba_(ss, ABA_CANAIS, COLUNAS_CANAIS)
+  sincronizarCanais_(canais)
+
+  removerAbaPadraoVazia_(ss)
+
+  Logger.log(
+    'Planilha pronta: abas "%s", "%s" e "%s". Cadastro de canais com %s linhas.',
+    ABA_FUNIL,
+    ABA_METAS,
+    ABA_CANAIS,
+    CANAIS.length,
+  )
+  Logger.log('Próximo passo: configure a Script Property %s e rode coletarOntem().', PROP_WEBHOOK)
+}
 
 /** Gatilho diário: coleta o dia anterior. */
 function coletarOntem() {
@@ -193,12 +245,13 @@ function coletarIntervalo_(inicio, fim, inicioExecucao) {
     var registros = []
 
     for (var i = 0; i < CANAIS.length; i++) {
-      var resposta = consultarCanal_(CANAIS[i], dia)
+      var canal = CANAIS[i].chave
+      var resposta = consultarCanal_(canal, dia)
 
       if (resposta.erro) {
         // Sem escrever nada: melhor um dia ausente, que o dashboard mostra como
         // ausente, do que um dia zerado que parece resultado real.
-        erros.push(dia + ' / ' + CANAIS[i] + ': ' + resposta.erro)
+        erros.push(dia + ' / ' + canal + ': ' + resposta.erro)
       } else {
         registros.push(resposta.dados)
       }
@@ -363,16 +416,76 @@ function mapearColunas_(cabecalho) {
 /** Devolve a aba do funil, criando-a com o cabeçalho correto na primeira vez. */
 function obterAba_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet()
-  var sh = ss.getSheetByName(ABA_FUNIL)
+  var sh = criarAba_(ss, ABA_FUNIL, COLUNAS)
 
-  if (!sh) {
-    sh = ss.insertSheet(ABA_FUNIL)
-    sh.getRange(1, 1, 1, COLUNAS.length).setValues([COLUNAS]).setFontWeight('bold')
-    sh.setFrozenRows(1)
-    sh.getRange('A:A').setNumberFormat('@')
-  }
+  if (sh.getLastRow() <= 1) sh.getRange('A:A').setNumberFormat('@')
 
   return sh
+}
+
+// ===================== PREPARO DA PLANILHA =====================
+
+/** Cria a aba com cabeçalho e linha congelada, ou devolve a existente. */
+function criarAba_(ss, nome, colunas) {
+  var sh = ss.getSheetByName(nome)
+  if (sh) return sh
+
+  sh = ss.insertSheet(nome)
+  sh.getRange(1, 1, 1, colunas.length).setValues([colunas]).setFontWeight('bold')
+  sh.setFrozenRows(1)
+  sh.autoResizeColumns(1, colunas.length)
+
+  return sh
+}
+
+/**
+ * Alinha a aba `canais` com a lista `CANAIS`.
+ *
+ * Só acrescenta o que falta. Rótulo e ordem que alguém tenha ajustado na
+ * planilha são preservados — a aba existe justamente para essa edição não
+ * depender de código.
+ */
+function sincronizarCanais_(sh) {
+  var valores = sh.getDataRange().getValues()
+  var cadastrados = {}
+
+  for (var i = 1; i < valores.length; i++) {
+    cadastrados[String(valores[i][0]).trim()] = true
+  }
+
+  var novas = []
+  for (var j = 0; j < CANAIS.length; j++) {
+    if (!cadastrados[CANAIS[j].chave]) {
+      novas.push([CANAIS[j].chave, CANAIS[j].rotulo, j + 1])
+    }
+  }
+
+  if (novas.length) {
+    sh.getRange(sh.getLastRow() + 1, 1, novas.length, COLUNAS_CANAIS.length).setValues(novas)
+  }
+}
+
+/**
+ * Remove a aba padrão que o Google cria com a planilha, se estiver vazia.
+ *
+ * Ela costuma se chamar "Página1" ou "Sheet1" conforme o idioma da conta, então
+ * a checagem é por conteúdo e não por nome — e nunca apaga uma aba com dado.
+ */
+function removerAbaPadraoVazia_(ss) {
+  var nossas = {}
+  nossas[ABA_FUNIL] = true
+  nossas[ABA_METAS] = true
+  nossas[ABA_CANAIS] = true
+
+  var abas = ss.getSheets()
+
+  for (var i = 0; i < abas.length; i++) {
+    var vazia = abas[i].getLastRow() === 0 && abas[i].getLastColumn() === 0
+
+    if (!nossas[abas[i].getName()] && vazia && ss.getSheets().length > 1) {
+      ss.deleteSheet(abas[i])
+    }
+  }
 }
 
 // ===================== DATAS =====================
