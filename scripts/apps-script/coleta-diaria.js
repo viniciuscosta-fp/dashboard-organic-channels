@@ -63,11 +63,18 @@ var FUSO = 'America/Sao_Paulo'
  */
 var TEMPO_MAXIMO_MS = 4.5 * 60 * 1000
 
-/** Chave da Script Property com a URL do webhook. Nunca versionar a URL. */
-var PROP_WEBHOOK = 'WEBHOOK_URL'
+/**
+ * NOME da Script Property que guarda a URL do webhook — **não** a URL.
+ *
+ * Não cole o endereço aqui. A URL vai em _Configurações do projeto →
+ * Propriedades do script_, numa propriedade chamada `WEBHOOK_URL`. Ela fica
+ * fora do código porque este arquivo é versionado, e porque assim sobrevive a
+ * uma atualização do script.
+ */
+var NOME_PROP_WEBHOOK = 'WEBHOOK_URL'
 
-/** Chave da Script Property que guarda o progresso do backfill. */
-var PROP_BACKFILL = 'BACKFILL_ESTADO'
+/** NOME da Script Property que guarda o progresso do backfill. */
+var NOME_PROP_BACKFILL = 'BACKFILL_ESTADO'
 
 // ===================== FUNÇÕES PÚBLICAS =====================
 
@@ -105,7 +112,10 @@ function prepararPlanilha() {
     ABA_CANAIS,
     CANAIS.length,
   )
-  Logger.log('Próximo passo: configure a Script Property %s e rode coletarOntem().', PROP_WEBHOOK)
+  Logger.log(
+    'Próximo passo: configure a Script Property %s e rode coletarOntem().',
+    NOME_PROP_WEBHOOK,
+  )
 }
 
 /** Gatilho diário: coleta o dia anterior. */
@@ -165,7 +175,7 @@ function continuarBackfill() {
 /** Interrompe um backfill em andamento e limpa o estado. */
 function cancelarBackfill() {
   limparGatilhosDeRetomada_()
-  PropertiesService.getScriptProperties().deleteProperty(PROP_BACKFILL)
+  PropertiesService.getScriptProperties().deleteProperty(NOME_PROP_BACKFILL)
   Logger.log('Backfill cancelado.')
 }
 
@@ -184,7 +194,7 @@ function executarBackfill_() {
   if (resultado.erros.length) Logger.log('Erros:\n' + resultado.erros.join('\n'))
 
   if (resultado.concluidoAte >= estado.fim) {
-    PropertiesService.getScriptProperties().deleteProperty(PROP_BACKFILL)
+    PropertiesService.getScriptProperties().deleteProperty(NOME_PROP_BACKFILL)
     Logger.log('Backfill concluído até %s. %s linhas gravadas.', estado.fim, resultado.gravados)
     return
   }
@@ -201,12 +211,12 @@ function executarBackfill_() {
 }
 
 function lerEstado_() {
-  var bruto = PropertiesService.getScriptProperties().getProperty(PROP_BACKFILL)
+  var bruto = PropertiesService.getScriptProperties().getProperty(NOME_PROP_BACKFILL)
   return bruto ? JSON.parse(bruto) : null
 }
 
 function gravarEstado_(estado) {
-  PropertiesService.getScriptProperties().setProperty(PROP_BACKFILL, JSON.stringify(estado))
+  PropertiesService.getScriptProperties().setProperty(NOME_PROP_BACKFILL, JSON.stringify(estado))
 }
 
 function agendarRetomada_() {
@@ -271,11 +281,45 @@ function coletarIntervalo_(inicio, fim, inicioExecucao) {
   return { concluidoAte: concluidoAte, gravados: gravados, erros: erros }
 }
 
+/**
+ * Recupera a URL do webhook, ou explica exatamente o que falta.
+ *
+ * O primeiro caso tratado é o engano fácil de cometer: colar a URL na constante
+ * `NOME_PROP_WEBHOOK`, que guarda o **nome** da propriedade. Sem esta checagem,
+ * o erro sairia como "Script Property https://… não configurada", que manda a
+ * pessoa procurar exatamente onde o problema não está.
+ */
+function obterUrlWebhook_() {
+  if (/^https?:\/\//i.test(NOME_PROP_WEBHOOK)) {
+    return {
+      erro:
+        'A constante NOME_PROP_WEBHOOK guarda o NOME da Script Property, não a URL. ' +
+        'Devolva o valor dela para "WEBHOOK_URL" e cadastre a URL em ' +
+        'Configurações do projeto → Propriedades do script.',
+    }
+  }
+
+  var url = PropertiesService.getScriptProperties().getProperty(NOME_PROP_WEBHOOK)
+
+  if (!url) {
+    return {
+      erro:
+        'Falta a Script Property "' +
+        NOME_PROP_WEBHOOK +
+        '". Cadastre em Configurações do projeto → Propriedades do script, ' +
+        'com a URL do webhook como valor.',
+    }
+  }
+
+  return { url: url }
+}
+
 /** Consulta um canal num único dia. Devolve `{dados}` ou `{erro}`. */
 function consultarCanal_(canal, dia) {
-  var url = PropertiesService.getScriptProperties().getProperty(PROP_WEBHOOK)
-  if (!url) return { erro: 'Script Property ' + PROP_WEBHOOK + ' não configurada.' }
+  var webhook = obterUrlWebhook_()
+  if (webhook.erro) return { erro: webhook.erro }
 
+  var url = webhook.url
   var payload = { canal: canal, linha: LINHA, start_date: dia, end_date: dia }
 
   try {

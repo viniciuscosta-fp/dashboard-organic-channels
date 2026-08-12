@@ -56,12 +56,19 @@ dashboard sem precisar de deploy.
 
 ## 3. Apontar o script para o webhook
 
-Em _Configurações do projeto → Propriedades do script_, adicione a propriedade
-`WEBHOOK_URL` com a URL do webhook do workflow "MKT · Channels · Métricas por
-Canal".
+No editor do Apps Script, vá em _Configurações do projeto → Propriedades do
+script → Adicionar propriedade de script_ e preencha:
 
-A URL fica aqui e **não** no código, porque o repositório é versionado e o
-endpoint é interno.
+| Campo       | Valor                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| Propriedade | `WEBHOOK_URL`                                                      |
+| Valor       | a URL do webhook do workflow "MKT · Channels · Métricas por Canal" |
+
+> **Não cole a URL no código.** A constante `NOME_PROP_WEBHOOK` guarda o _nome_
+> da propriedade, não o endereço — trocar o valor dela faz o script procurar uma
+> propriedade que não existe. A URL fica na Script Property por dois motivos:
+> este arquivo é versionado, e assim ela sobrevive quando você colar uma versão
+> nova do script.
 
 ## 4. Dar acesso ao dashboard
 
@@ -181,12 +188,13 @@ Rode `/data-check` no Claude Code, ou consulte a tabela de sintomas em
 
 Erros específicos da coleta:
 
-| Sintoma                                       | Causa provável                                                 |
-| --------------------------------------------- | -------------------------------------------------------------- |
-| `Script Property WEBHOOK_URL não configurada` | Passo 3 incompleto                                             |
-| `HTTP 401` ou `HTTP 403` no log               | URL do webhook errada ou sem acesso                            |
-| `resposta sem os campos: …`                   | O webhook mudou o formato de saída                             |
-| Dia faltando na planilha                      | A chamada falhou; rode `backfill` naquele intervalo            |
-| Execução interrompida sem retomar             | Rode `continuarBackfill()` à mão                               |
-| `A aba "funil" está sem as colunas: …`        | Cabeçalho renomeado ou removido; rode `prepararPlanilha()`     |
-| Aba faltando ou cabeçalho apagado             | Rode `prepararPlanilha()` — ele recria sem tocar no que existe |
+| Sintoma                                       | Causa provável                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| `Falta a Script Property "WEBHOOK_URL"`       | Passo 3 incompleto                                                 |
+| `A constante NOME_PROP_WEBHOOK guarda o NOME` | A URL foi colada no código; devolva a constante para `WEBHOOK_URL` |
+| `HTTP 401` ou `HTTP 403` no log               | URL do webhook errada ou sem acesso                                |
+| `resposta sem os campos: …`                   | O webhook mudou o formato de saída                                 |
+| Dia faltando na planilha                      | A chamada falhou; rode `backfill` naquele intervalo                |
+| Execução interrompida sem retomar             | Rode `continuarBackfill()` à mão                                   |
+| `A aba "funil" está sem as colunas: …`        | Cabeçalho renomeado ou removido; rode `prepararPlanilha()`         |
+| Aba faltando ou cabeçalho apagado             | Rode `prepararPlanilha()` — ele recria sem tocar no que existe     |
