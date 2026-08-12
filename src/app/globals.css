@@ -1,0 +1,81 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens de cor do dashboard.
+ *
+ * Os slots de série e a rampa de etapas foram validados para daltonismo e
+ * contraste nos dois modos antes de entrarem aqui — não troque um hex sem
+ * revalidar. Aqua (--series-3) fica abaixo de 3:1 no modo claro de propósito:
+ * a tabela por canal é a leitura alternativa que compensa isso.
+ */
+:root {
+  color-scheme: light;
+
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+
+  --ink: #0b0b0b;
+  --ink-secondary: #52514e;
+  --ink-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --hairline: rgb(11 11 11 / 0.1);
+
+  /* Categórico: um slot por canal, atribuído em ordem fixa e nunca reciclado. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+
+  /* Ordinal: uma única matiz, clara → escura, na ordem das etapas do funil. */
+  --stage-1: #86b6ef;
+  --stage-2: #2a78d6;
+  --stage-3: #184f95;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --hairline: rgb(255 255 255 / 0.1);
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+
+    --stage-1: #9ec5f4;
+    --stage-2: #3987e5;
+    --stage-3: #184f95;
+  }
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-hairline: var(--hairline);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family:
+    var(--font-geist-sans),
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
