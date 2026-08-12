@@ -1,47 +1,112 @@
 /**
- * Coleta diária de métricas por canal — Dashboard de Canais Orgânicos
- * ---------------------------------------------------------------------------
- * Consulta o webhook "MKT | Channels | Métricas por Canal" uma vez por dia e
- * canal, e grava na aba `funil` da planilha que hospeda este script.
+ * ============================================================================
+ * COLETA DIÁRIA DE MÉTRICAS POR CANAL
+ * ============================================================================
  *
- * Cole este arquivo no editor de Apps Script da planilha. O passo a passo de
- * instalação, gatilhos e carga histórica está em
- * `docs/setup-planilha-e-apps-script.md`.
+ * Consulta o webhook "MKT · Channels · Métricas por Canal" e alimenta esta
+ * planilha com uma linha por dia e canal. Serve de fonte para o dashboard de
+ * canais orgânicos.
  *
- * Três regras sustentam a confiabilidade do dado:
+ * Este arquivo é autossuficiente: cole no editor de Apps Script da planilha,
+ * preencha WEBHOOK_URL logo abaixo e siga o roteiro. Não depende de nada
+ * externo.
+ *
+ * ----------------------------------------------------------------------------
+ * INSTALAÇÃO
+ * ----------------------------------------------------------------------------
+ *
+ *   1. Preencha WEBHOOK_URL na seção CONFIGURAÇÃO.
+ *   2. Rode `prepararPlanilha()`. Autorize os acessos que o Google pedir.
+ *      Isso cria as abas `funil`, `metas` e `canais` com o cabeçalho certo.
+ *   3. Rode `coletarOntem()` e confira as cinco linhas que aparecerem na aba
+ *      `funil` contra o que a HubSpot mostra para o mesmo dia.
+ *
+ * ----------------------------------------------------------------------------
+ * CARGA HISTÓRICA — faça em etapas, nesta ordem
+ * ----------------------------------------------------------------------------
+ *
+ *   1. `coletarOntem()`                        → confira os números
+ *   2. `coletarOntem()` de novo                → tem que continuar 5 linhas
+ *   3. `backfill('2026-08-03','2026-08-09')`   → uma semana
+ *   4. `backfill` sobre um mês                 → exercita a retomada
+ *   5. `backfill` sobre o resto do período
+ *
+ * Cada etapa valida algo diferente. Fatiar assim faz um erro de mapeamento
+ * aparecer em cinco linhas em vez de novecentas.
+ *
+ * ----------------------------------------------------------------------------
+ * GATILHOS — só depois que a carga histórica estiver limpa
+ * ----------------------------------------------------------------------------
+ *
+ *   `coletarOntem`          → diário, entre 6h e 7h
+ *   `recoletarUltimosDias`  → semanal
+ *
+ * O semanal existe porque negócio no HubSpot muda retroativamente: um deal de
+ * ontem pode ser requalificado hoje. Sem essa passada, o número congelaria no
+ * primeiro valor coletado.
+ *
+ * ----------------------------------------------------------------------------
+ * O QUE CADA FUNÇÃO FAZ
+ * ----------------------------------------------------------------------------
+ *
+ *   prepararPlanilha()          Cria as três abas. Seguro rodar quantas vezes quiser.
+ *   coletarOntem()              Coleta o dia anterior nos canais configurados.
+ *   recoletarUltimosDias(n)     Regrava os últimos n dias (padrão 30).
+ *   backfill(inicio, fim)       Carga histórica, com retomada automática.
+ *   continuarBackfill()         Chamada pelo gatilho de retomada. Não chame à mão.
+ *   cancelarBackfill()          Interrompe um backfill em andamento.
+ *
+ * ----------------------------------------------------------------------------
+ * TRÊS REGRAS QUE SUSTENTAM O DADO
+ * ----------------------------------------------------------------------------
  *
  *   1. UPSERT, NUNCA APPEND. Cada dia e canal ocupa uma linha só. Reexecutar
- *      qualquer intervalo corrige em vez de duplicar — e o dashboard recusa a
- *      planilha inteira se encontrar duplicata, justamente porque somar duas
- *      linhas do mesmo dia dobraria o número sem aviso.
+ *      qualquer intervalo corrige em vez de duplicar. O dashboard recusa a
+ *      planilha inteira se achar duplicata, porque somar duas linhas do mesmo
+ *      dia dobraria o número sem aviso nenhum.
  *
  *   2. ERRO NÃO ESCREVE. Falha de rede ou erro do webhook pula aquele par
- *      dia-canal e registra no log. Gravar zero numa falha criaria uma queda
- *      de performance que nunca aconteceu.
+ *      dia-canal e registra no log. Gravar zero numa falha criaria uma queda de
+ *      performance que nunca aconteceu.
  *
- *   3. DATA NO FUSO DO NEGÓCIO. Tudo em America/Sao_Paulo. Em UTC, das 21h em
- *      diante o dia já virou e a coleta gravaria no dia errado.
+ *   3. DATA NO FUSO DO BRASIL. Em UTC, das 21h em diante o dia já virou, e a
+ *      coleta gravaria na data errada.
+ *
+ * ----------------------------------------------------------------------------
+ * FORMATO DAS ABAS
+ * ----------------------------------------------------------------------------
+ *
+ *   funil    date | channel | revenue | mqls | opportunities | customers
+ *            Uma linha por dia e canal. `date` em texto simples, AAAA-MM-DD.
+ *
+ *   metas    month | channel | metric | target
+ *            Meta mensal. `metric` é revenue, mqls, opportunities ou customers.
+ *            Preencha só o que tem meta de verdade — linha ausente vira "sem
+ *            meta" no dashboard, nunca meta zero.
+ *
+ *   canais   channel | label | order
+ *            `label` é o nome que aparece na tela do dashboard.
  */
 
-// ===================== CONFIGURAÇÃO =====================
+// ╔════════════════════════════════════════════════════════════════════════╗
+// ║  CONFIGURAÇÃO — preencha antes de rodar qualquer coisa                 ║
+// ╚════════════════════════════════════════════════════════════════════════╝
 
-/** Abas da planilha. Precisam casar com os intervalos configurados no dashboard. */
-var ABA_FUNIL = 'funil'
-var ABA_METAS = 'metas'
-var ABA_CANAIS = 'canais'
-
-/** Colunas de cada aba, na ordem do contrato. Ver docs/data-contract.md. */
-var COLUNAS = ['date', 'channel', 'revenue', 'mqls', 'opportunities', 'customers']
-var COLUNAS_METAS = ['month', 'channel', 'metric', 'target']
-var COLUNAS_CANAIS = ['channel', 'label', 'order']
-
-/** Linha de negócio consultada. O dashboard cobre apenas `professional`. */
-var LINHA = 'professional'
+/**
+ * URL do webhook de métricas por canal.
+ *
+ * Substitua o texto abaixo pelo endereço completo, entre aspas. Exemplo:
+ * var WEBHOOK_URL = 'https://webhook.exemplo.com/webhook/mkt-channels'
+ */
+var WEBHOOK_URL = 'COLE_A_URL_DO_WEBHOOK_AQUI'
 
 /**
  * Canais coletados, com o nome que aparece no dashboard.
  *
- * Incluir um canal novo é acrescentar uma entrada aqui e rodar
+ * `chave` é o valor enviado ao webhook e precisa ser uma das chaves que ele
+ * aceita. `rotulo` é livre — é o nome exibido na tela.
+ *
+ * Para incluir um canal novo: acrescente a linha aqui e rode
  * `prepararPlanilha()`, que sincroniza a aba `canais`.
  */
 var CANAIS = [
@@ -52,10 +117,26 @@ var CANAIS = [
   { chave: 'ai_referrals', rotulo: 'Referências de IA' },
 ]
 
-/** Pausa entre chamadas, para não martelar a HubSpot. */
+/** Linha de negócio consultada: `professional` ou `abroad`. */
+var LINHA = 'professional'
+
+/** Fuso usado para decidir que dia é hoje. */
+var FUSO = 'America/Sao_Paulo'
+
+/** Pausa entre chamadas, em milissegundos. Aumente se aparecer rate limit. */
 var PAUSA_MS = 400
 
-var FUSO = 'America/Sao_Paulo'
+// ╔════════════════════════════════════════════════════════════════════════╗
+// ║  Daqui para baixo normalmente não é preciso mexer                      ║
+// ╚════════════════════════════════════════════════════════════════════════╝
+
+var ABA_FUNIL = 'funil'
+var ABA_METAS = 'metas'
+var ABA_CANAIS = 'canais'
+
+var COLUNAS = ['date', 'channel', 'revenue', 'mqls', 'opportunities', 'customers']
+var COLUNAS_METAS = ['month', 'channel', 'metric', 'target']
+var COLUNAS_CANAIS = ['channel', 'label', 'order']
 
 /**
  * O Apps Script encerra a execução em 6 minutos. Paramos aos 4,5 para sobrar
@@ -63,32 +144,20 @@ var FUSO = 'America/Sao_Paulo'
  */
 var TEMPO_MAXIMO_MS = 4.5 * 60 * 1000
 
-/**
- * NOME da Script Property que guarda a URL do webhook — **não** a URL.
- *
- * Não cole o endereço aqui. A URL vai em _Configurações do projeto →
- * Propriedades do script_, numa propriedade chamada `WEBHOOK_URL`. Ela fica
- * fora do código porque este arquivo é versionado, e porque assim sobrevive a
- * uma atualização do script.
- */
-var NOME_PROP_WEBHOOK = 'WEBHOOK_URL'
-
-/** NOME da Script Property que guarda o progresso do backfill. */
+/** Onde o backfill guarda de onde retomar. É estado interno, não configuração. */
 var NOME_PROP_BACKFILL = 'BACKFILL_ESTADO'
 
 // ===================== FUNÇÕES PÚBLICAS =====================
 
 /**
- * Monta a planilha do zero: as três abas, com cabeçalho e formatação corretos.
+ * Monta a planilha: as três abas, com cabeçalho e formatação corretos.
  *
- * Rode uma vez, logo depois de colar este script numa planilha em branco. É
- * seguro rodar de novo: aba que já existe não é recriada, e dado existente não
- * é tocado — só o cadastro de canais é sincronizado com a lista `CANAIS`.
+ * Rode uma vez, logo depois de colar este script. É seguro rodar de novo: aba
+ * que já existe não é recriada e dado existente não é tocado — só o cadastro de
+ * canais é sincronizado com a lista `CANAIS`.
  *
- * Preferir esta função a importar um arquivo pronto tem um motivo concreto: a
- * coluna `date` precisa ser **texto simples**, e conversão de xlsx ou CSV não
- * garante isso. Como célula de data, a API devolve número serial e o dashboard
- * não reconhece o valor.
+ * A coluna `date` fica como texto simples de propósito. Como célula de data, a
+ * API do Google a devolve como número serial e o dashboard não reconhece.
  */
 function prepararPlanilha() {
   var ss = SpreadsheetApp.getActiveSpreadsheet()
@@ -106,25 +175,27 @@ function prepararPlanilha() {
   removerAbaPadraoVazia_(ss)
 
   Logger.log(
-    'Planilha pronta: abas "%s", "%s" e "%s". Cadastro de canais com %s linhas.',
+    'Planilha pronta: abas "%s", "%s" e "%s". Cadastro com %s canais.',
     ABA_FUNIL,
     ABA_METAS,
     ABA_CANAIS,
     CANAIS.length,
   )
-  Logger.log(
-    'Próximo passo: configure a Script Property %s e rode coletarOntem().',
-    NOME_PROP_WEBHOOK,
-  )
+
+  if (!urlConfigurada_()) {
+    Logger.log('ATENÇÃO: preencha WEBHOOK_URL no topo do script antes de coletar.')
+  } else {
+    Logger.log('Próximo passo: rode coletarOntem() e confira os números.')
+  }
 }
 
-/** Gatilho diário: coleta o dia anterior. */
+/** Coleta o dia anterior. É a função do gatilho diário. */
 function coletarOntem() {
   var ontem = somarDias_(hojeISO_(), -1)
   var resultado = coletarIntervalo_(ontem, ontem, Date.now())
 
   Logger.log(
-    'Coleta de %s: %s gravados, %s com erro.',
+    'Coleta de %s: %s linhas gravadas, %s com erro.',
     ontem,
     resultado.gravados,
     resultado.erros.length,
@@ -134,11 +205,9 @@ function coletarOntem() {
 }
 
 /**
- * Regrava os últimos `dias` dias.
+ * Regrava os últimos `dias` dias. Sem argumento, usa 30.
  *
- * Existe porque negócio no HubSpot muda retroativamente: um deal de ontem pode
- * ser requalificado hoje. Sem esta passada, o número do dia congelaria no
- * primeiro valor coletado. Semanal é frequência suficiente.
+ * É a função do gatilho semanal: corrige o que a HubSpot mudou retroativamente.
  */
 function recoletarUltimosDias(dias) {
   var total = dias || 30
@@ -152,9 +221,10 @@ function recoletarUltimosDias(dias) {
 /**
  * Carga histórica de um intervalo, com retomada automática.
  *
- * Chame com o intervalo desejado, por exemplo `backfill('2026-03-01',
- * '2026-08-11')`. Se não couber numa execução, o script salva o progresso e
- * agenda a continuação sozinho — acompanhe pelo log.
+ * Exemplo: backfill('2026-03-01', '2026-08-11')
+ *
+ * Se não couber numa execução, o script grava o progresso e agenda a
+ * continuação sozinho. Acompanhe em Execuções.
  */
 function backfill(inicio, fim) {
   if (!ehISO_(inicio) || !ehISO_(fim)) {
@@ -166,7 +236,7 @@ function backfill(inicio, fim) {
   executarBackfill_()
 }
 
-/** Chamada pelo gatilho temporário que o backfill cria. Não chame à mão. */
+/** Chamada pelo gatilho de retomada que o backfill cria. Não chame à mão. */
 function continuarBackfill() {
   limparGatilhosDeRetomada_()
   executarBackfill_()
@@ -188,8 +258,7 @@ function executarBackfill_() {
     return
   }
 
-  var inicioExecucao = Date.now()
-  var resultado = coletarIntervalo_(estado.proximo, estado.fim, inicioExecucao)
+  var resultado = coletarIntervalo_(estado.proximo, estado.fim, Date.now())
 
   if (resultado.erros.length) Logger.log('Erros:\n' + resultado.erros.join('\n'))
 
@@ -240,10 +309,14 @@ function limparGatilhosDeRetomada_() {
 /**
  * Percorre os dias do intervalo consultando cada canal.
  *
- * Grava o que conseguiu a cada dia concluído, para que uma interrupção nunca
- * perca trabalho já feito. Devolve até onde chegou.
+ * Grava a cada dia concluído, para que uma interrupção nunca perca trabalho já
+ * feito. Devolve até onde chegou.
  */
 function coletarIntervalo_(inicio, fim, inicioExecucao) {
+  if (!urlConfigurada_()) {
+    throw new Error('Preencha WEBHOOK_URL no topo deste script com a URL do webhook, entre aspas.')
+  }
+
   var erros = []
   var gravados = 0
   var concluidoAte = somarDias_(inicio, -1)
@@ -281,49 +354,16 @@ function coletarIntervalo_(inicio, fim, inicioExecucao) {
   return { concluidoAte: concluidoAte, gravados: gravados, erros: erros }
 }
 
-/**
- * Recupera a URL do webhook, ou explica exatamente o que falta.
- *
- * O primeiro caso tratado é o engano fácil de cometer: colar a URL na constante
- * `NOME_PROP_WEBHOOK`, que guarda o **nome** da propriedade. Sem esta checagem,
- * o erro sairia como "Script Property https://… não configurada", que manda a
- * pessoa procurar exatamente onde o problema não está.
- */
-function obterUrlWebhook_() {
-  if (/^https?:\/\//i.test(NOME_PROP_WEBHOOK)) {
-    return {
-      erro:
-        'A constante NOME_PROP_WEBHOOK guarda o NOME da Script Property, não a URL. ' +
-        'Devolva o valor dela para "WEBHOOK_URL" e cadastre a URL em ' +
-        'Configurações do projeto → Propriedades do script.',
-    }
-  }
-
-  var url = PropertiesService.getScriptProperties().getProperty(NOME_PROP_WEBHOOK)
-
-  if (!url) {
-    return {
-      erro:
-        'Falta a Script Property "' +
-        NOME_PROP_WEBHOOK +
-        '". Cadastre em Configurações do projeto → Propriedades do script, ' +
-        'com a URL do webhook como valor.',
-    }
-  }
-
-  return { url: url }
+function urlConfigurada_() {
+  return typeof WEBHOOK_URL === 'string' && /^https?:\/\//i.test(WEBHOOK_URL)
 }
 
 /** Consulta um canal num único dia. Devolve `{dados}` ou `{erro}`. */
 function consultarCanal_(canal, dia) {
-  var webhook = obterUrlWebhook_()
-  if (webhook.erro) return { erro: webhook.erro }
-
-  var url = webhook.url
   var payload = { canal: canal, linha: LINHA, start_date: dia, end_date: dia }
 
   try {
-    var res = UrlFetchApp.fetch(url, {
+    var res = UrlFetchApp.fetch(WEBHOOK_URL, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
@@ -336,9 +376,9 @@ function consultarCanal_(canal, dia) {
     var corpo = JSON.parse(res.getContentText() || '{}')
     if (corpo.erro) return { erro: String(corpo.erro) }
 
-    // Ausência de campo é erro, não zero: o webhook devolver um corpo sem
-    // `mqls` significa que algo mudou do outro lado, e assumir zero esconderia
-    // isso até alguém estranhar o número numa reunião.
+    // Campo ausente é erro, não zero: se o webhook devolver um corpo sem
+    // `mqls`, algo mudou do outro lado, e assumir zero esconderia isso até
+    // alguém estranhar o número numa reunião.
     var faltando = camposFaltando_(corpo)
     if (faltando.length) return { erro: 'resposta sem os campos: ' + faltando.join(', ') }
 
@@ -377,8 +417,8 @@ function camposFaltando_(corpo) {
  * Grava os registros por chave `date|channel`: atualiza a linha existente ou
  * acrescenta uma nova.
  *
- * Lê e reescreve o bloco de dados de uma vez em vez de chamar a API por linha —
- * numa carga de um mês são centenas de registros, e o custo por chamada é o que
+ * Lê e reescreve o bloco de uma vez em vez de chamar a API por linha — numa
+ * carga de um mês são centenas de registros, e o custo por chamada é o que
  * estoura o limite de execução.
  *
  * Colunas extras que alguém tenha acrescentado à planilha são preservadas: o
@@ -409,7 +449,7 @@ function gravarRegistros_(registros) {
       aplicarRegistro_(nova, registro, indice)
       novas.push(nova)
       // Registra a posição para o caso de o mesmo par vir duas vezes no lote.
-      posicao[chave] = valores.length + novas.length - 1
+      posicao[chave] = valores.length
       valores.push(nova)
     } else {
       aplicarRegistro_(valores[linhaExistente], registro, indice)
@@ -417,8 +457,6 @@ function gravarRegistros_(registros) {
   }
 
   sh.getRange(1, 1, valores.length, largura).setValues(valores)
-  // A coluna de data precisa ser texto puro: como célula de data, a API do
-  // Sheets a devolveria como número serial e o dashboard não a reconheceria.
   sh.getRange(2, indice.date + 1, valores.length - 1, 1).setNumberFormat('@')
 }
 
@@ -451,7 +489,13 @@ function mapearColunas_(cabecalho) {
   }
 
   if (faltando.length) {
-    throw new Error('A aba "' + ABA_FUNIL + '" está sem as colunas: ' + faltando.join(', ') + '.')
+    throw new Error(
+      'A aba "' +
+        ABA_FUNIL +
+        '" está sem as colunas: ' +
+        faltando.join(', ') +
+        '. Rode prepararPlanilha().',
+    )
   }
 
   return indice
@@ -485,9 +529,8 @@ function criarAba_(ss, nome, colunas) {
 /**
  * Alinha a aba `canais` com a lista `CANAIS`.
  *
- * Só acrescenta o que falta. Rótulo e ordem que alguém tenha ajustado na
- * planilha são preservados — a aba existe justamente para essa edição não
- * depender de código.
+ * Só acrescenta o que falta. Rótulo e ordem ajustados na planilha são
+ * preservados — a aba existe justamente para essa edição não depender de código.
  */
 function sincronizarCanais_(sh) {
   var valores = sh.getDataRange().getValues()
@@ -512,8 +555,8 @@ function sincronizarCanais_(sh) {
 /**
  * Remove a aba padrão que o Google cria com a planilha, se estiver vazia.
  *
- * Ela costuma se chamar "Página1" ou "Sheet1" conforme o idioma da conta, então
- * a checagem é por conteúdo e não por nome — e nunca apaga uma aba com dado.
+ * A checagem é por conteúdo e não por nome, porque ela se chama "Página1" ou
+ * "Sheet1" conforme o idioma da conta — e nunca apaga uma aba com dado.
  */
 function removerAbaPadraoVazia_(ss) {
   var nossas = {}
