@@ -38,19 +38,19 @@ n8n → Sheets (abas funil e metas) → repositórios ─→ getFunnelSnapshots(
                                                                           └→ page.tsx → componentes
 ```
 
-| Caminho                             | Papel                                                    |
-| ----------------------------------- | -------------------------------------------------------- |
-| `src/lib/data/funnel-repository.ts` | Interface `FunnelRepository` e `FunnelDataError`         |
-| `src/lib/data/goal-repository.ts`   | Interface `GoalRepository`                               |
-| `src/lib/data/funnel-service.ts`    | Factories, cache (`use cache`), entrada da UI            |
-| `src/lib/data/*-parser.ts`          | Parsing puro de fonte externa, sem rede                  |
-| `src/lib/data/goal-math.ts`         | Rateio, gap, ritmo, projeção, status, burn-up            |
-| `src/lib/business-days.ts`          | Aritmética de dias úteis                                 |
-| `src/lib/period.ts`                 | Presets de período e leitura da URL                      |
-| `src/lib/data/funnel-view.ts`       | Modelos de visualização, funções puras                   |
-| `src/lib/env.ts`                    | Validação de ambiente com Zod, falha alto                |
-| `src/components/`                   | Atomic Design: atoms → molecules → organisms → templates |
-| `src/app/page.tsx`                  | Único lugar que busca dados e lê relógio                 |
+| Caminho                          | Papel                                                    |
+| -------------------------------- | -------------------------------------------------------- |
+| `src/lib/data/*-repository.ts`   | Contratos de leitura: funil, metas e canais              |
+| `src/lib/data/funnel-service.ts` | Factories, cache (`use cache`), entrada da UI            |
+| `src/lib/data/*-parser.ts`       | Parsing puro de fonte externa, sem rede                  |
+| `src/lib/data/sheets-client.ts`  | Autenticação e transporte, comum às três abas            |
+| `src/lib/data/goal-math.ts`      | Rateio, gap, ritmo, projeção, status, burn-up            |
+| `src/lib/business-days.ts`       | Aritmética de dias úteis                                 |
+| `src/lib/period.ts`              | Presets de período e leitura da URL                      |
+| `src/lib/data/funnel-view.ts`    | Modelos de visualização, funções puras                   |
+| `src/lib/env.ts`                 | Validação de ambiente com Zod, falha alto                |
+| `src/components/`                | Atomic Design: atoms → molecules → organisms → templates |
+| `src/app/page.tsx`               | Único lugar que busca dados e lê relógio                 |
 
 ### Regras que não se quebram
 
@@ -90,16 +90,36 @@ ali, nunca espalhado pela lógica. O porquê de cada escolha está em
 
 ## Dados
 
-`docs/data-contract.md` é o contrato entre o flow do n8n e o código. Mudou
-coluna na planilha? O doc muda no mesmo commit que o parser.
+`docs/data-contract.md` é o contrato entre a coleta e o código. Mudou coluna na
+planilha? O doc muda no mesmo commit que o parser.
 
-Duas abas: `funil`, com uma linha **por dia e canal** (`date`, `channel`,
-`mqls`, `opportunities`, `customers`), e `metas`, com uma linha por mês, canal
-e etapa (`month`, `channel`, `stage`, `target`). Colunas são mapeadas por nome,
-nunca por posição.
+Três abas, todas com colunas mapeadas por nome e nunca por posição:
+
+| Aba      | Uma linha por        | Colunas                                                            |
+| -------- | -------------------- | ------------------------------------------------------------------ |
+| `funil`  | dia e canal          | `date`, `channel`, `revenue`, `mqls`, `opportunities`, `customers` |
+| `metas`  | mês, canal e métrica | `month`, `channel`, `metric`, `target`                             |
+| `canais` | canal                | `channel`, `label`, `order`                                        |
+
+Quem escreve é `scripts/apps-script/coleta-diaria.js`, que roda na planilha e
+consulta o webhook de métricas por canal. Ele grava por **upsert**: dia e canal
+repetidos derrubam a leitura do dashboard, porque somariam em silêncio.
+
+Duas armadilhas já resolvidas, que não devem regredir: a API do Sheets é lida
+com `UNFORMATTED_VALUE` (o padrão devolveria `"1.825"` para 1825, lido como
+1,825), e a coluna `date` é texto simples (como data, voltaria número serial).
 
 A granularidade diária é requisito: sem ela não há ritmo, tendência nem
 projeção.
+
+## Métricas e etapas
+
+`METRICS` são as quatro com meta: receita, MQLs, oportunidades e clientes.
+`FUNNEL_STAGES` são só as três contagens, e existem para o gráfico de funil —
+receita não é estreitamento, é valor.
+
+Receita usa schema decimal e formatação em reais; contagens são inteiras. Use
+`formatMetricValue` em vez de escolher o formatador na mão.
 
 ## Cores e gráficos
 

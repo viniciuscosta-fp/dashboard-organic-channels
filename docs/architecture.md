@@ -3,23 +3,28 @@
 ## O caminho do dado
 
 ```
-HubSpot → flow n8n → Sheets aba `funil` → SheetsFunnelRepository ─┐
-                                          MockFunnelRepository ───┴→ getFunnelSnapshots()
-                                                                              │ use cache
-             time comercial → Sheets aba `metas` → SheetsGoalRepository ─┐    │
-                                                   MockGoalRepository ───┴→ getGoals()
-                                                                              │ use cache
-                                                                              ↓
+HubSpot → webhook n8n → Apps Script (coleta diária) → aba `funil` ─┐
+                                                                   │
+                        time comercial ──────────────→ aba `metas` ─┼→ repositórios
+                                                                   │   (sheets ou mock)
+                        marketing ──────────────────→ aba `canais` ─┘        │
+                                                                             │ use cache
+                                                                             ↓
                                                                      computeAdherence()
-                                                                              ↓
+                                                                             ↓
                                                                         app/page.tsx
-                                                                              ↓
+                                                                             ↓
                                                                         componentes
 ```
 
-O n8n escreve; o dashboard lê. Não há caminho de escrita no app — nenhuma rota
-recebe dados. Isso mantém a superfície de ataque mínima e dispensa autenticação
-de máquina para máquina.
+A coleta escreve; o dashboard lê. Não há caminho de escrita no app — nenhuma
+rota recebe dados. Isso mantém a superfície de ataque mínima e dispensa
+autenticação de máquina para máquina.
+
+O webhook devolve os números agregados de um canal num intervalo. Para ter série
+diária, o Apps Script chama uma vez por dia e canal, gravando por upsert. O
+script vive em `scripts/apps-script/coleta-diaria.js` e o roteiro de instalação
+em [`setup-planilha-e-apps-script.md`](setup-planilha-e-apps-script.md).
 
 ## A decisão central: a UI não conhece a fonte
 
@@ -59,8 +64,16 @@ sem rede.
 
 A separação entre parsing e acesso existe para que a lógica que mais quebra —
 interpretar o que veio de fora — seja testável sem credencial e sem rede. O
-transporte é compartilhado pelas duas abas em `sheets-client.ts`; só o intervalo
+transporte é compartilhado pelas três abas em `sheets-client.ts`; só o intervalo
 e o parser mudam.
+
+### Ler valor cru, nunca formatado
+
+`sheets-client.ts` pede `valueRenderOption=UNFORMATTED_VALUE`. Não é detalhe de
+performance: o padrão da API devolve o **texto exibido**, e um inteiro com
+separador de milhar voltaria como `"1.825"`, que a coerção numérica lê como
+1,825. Mil vezes menos, sem erro nenhum. Ver
+[`decisions/0004`](decisions/0004-receita-como-metrica-e-leitura-crua-da-planilha.md).
 
 ## Aderência à meta
 

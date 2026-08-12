@@ -16,6 +16,29 @@ garante isso — se você precisar afrouxar esse teste, a mudança está errada.
 
 Toda leitura passa por `getFunnelSnapshots` em `funnel-service.ts`.
 
+## Leitura da planilha
+
+Duas armadilhas já custaram caro e não devem regredir:
+
+`fetchSheetValues` **precisa** de `valueRenderOption=UNFORMATTED_VALUE`. O
+padrão da API devolve o texto exibido: `1825` formatado com separador volta como
+`"1.825"` e a coerção o lê como 1,825 — mil vezes menos, sem erro nenhum.
+
+A coluna `date` é texto simples na planilha. Como célula de data, volta número
+serial.
+
+Dia e canal repetidos na aba do funil **derrubam a leitura**. Não some
+duplicatas: todo cálculo soma o período, e a repetição dobraria o número em
+silêncio.
+
+## Métricas
+
+`METRICS` inclui receita; `FUNNEL_STAGES`, não. Receita tem meta, projeção e
+status como as demais, mas fica fora do gráfico de funil — não é estreitamento.
+
+Receita é decimal e formatada em reais. Use `formatMetricValue` e
+`formatSignedMetric` em vez de escolher o formatador na mão.
+
 ## Adicionar uma nova fonte (GA4, GSC, Semrush, Postgres)
 
 1. Implemente `FunnelRepository` (`funnel-repository.ts`) num arquivo novo.

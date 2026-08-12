@@ -1,7 +1,21 @@
 # 0002 — Sem autenticação no código na V1
 
-- **Status:** aceita, com pendência de verificação
+- **Status:** parcialmente superada — ver "Atualização"
 - **Data:** 2026-08-12
+
+## Atualização (2026-08-12)
+
+A Vercel foi **descartada** por restrições de compliance da empresa. Com isso
+cai a segunda metade desta decisão: não há mais Deployment Protection para
+delegar o controle de acesso.
+
+O que permanece válido: não há nada de autenticação espalhado pelo código, então
+adicionar Auth.js continua sendo trabalho aditivo, não refactor.
+
+O que ficou em aberto: **onde hospedar e como proteger o acesso**. Enquanto isso
+não for decidido, o dashboard roda apenas localmente. A escolha de hospedagem e
+a de autenticação passam a ser a mesma decisão, e merecem uma ADR nova quando
+forem tomadas.
 
 ## Contexto
 
