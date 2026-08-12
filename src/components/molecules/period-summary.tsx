@@ -5,6 +5,8 @@ interface PeriodSummaryProps {
   timing: PeriodTiming
   /** Meses do período sem meta cadastrada, em ISO `AAAA-MM`. */
   missingGoalMonths: string[]
+  /** Canais que apareceram no funil sem estar na aba de cadastro. */
+  unregisteredChannels: string[]
 }
 
 /**
@@ -14,7 +16,11 @@ interface PeriodSummaryProps {
  * até quando o n8n escreveu — se o flow parou há três dias, quem está olhando
  * precisa saber disso antes de tomar qualquer decisão.
  */
-export function PeriodSummary({ timing, missingGoalMonths }: PeriodSummaryProps) {
+export function PeriodSummary({
+  timing,
+  missingGoalMonths,
+  unregisteredChannels,
+}: PeriodSummaryProps) {
   const { lastDataDate, businessDaysElapsed, businessDaysTotal, elapsedRatio } = timing
 
   return (
@@ -39,6 +45,13 @@ export function PeriodSummary({ timing, missingGoalMonths }: PeriodSummaryProps)
         <span className="text-ink-secondary">
           <span aria-hidden>⚠ </span>
           sem meta cadastrada para {missingGoalMonths.join(', ')}
+        </span>
+      ) : null}
+
+      {unregisteredChannels.length > 0 ? (
+        <span className="text-ink-secondary">
+          <span aria-hidden>⚠ </span>
+          canal fora do cadastro: {unregisteredChannels.join(', ')}
         </span>
       ) : null}
     </div>

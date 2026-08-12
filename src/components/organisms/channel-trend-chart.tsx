@@ -20,20 +20,29 @@ import { formatCount } from '@/lib/format'
  * A cor segue o canal, não a sua posição no ranking: filtrar um canal não
  * pode repintar os que sobraram.
  */
-const SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)']
+const SERIES_COLORS = [
+  'var(--series-1)',
+  'var(--series-2)',
+  'var(--series-3)',
+  'var(--series-4)',
+  'var(--series-5)',
+]
 
 interface ChannelTrendChartProps {
   trend: TrendDatum[]
+  /** Chaves dos canais, na ordem canônica que define a cor de cada um. */
   channels: string[]
+  /** Chave do canal para o nome exibido. */
+  labels: Record<string, string>
 }
 
-export function ChannelTrendChart({ trend, channels }: ChannelTrendChartProps) {
+export function ChannelTrendChart({ trend, channels, labels }: ChannelTrendChartProps) {
   // Recharts precisa de linhas planas; o modelo de visualização guarda os
   // canais aninhados para não colidir com `date` e `label`.
   const data = trend.map((point) => ({ label: point.label, ...point.channels }))
 
   const legend = channels.map((channel, index) => ({
-    label: channel,
+    label: labels[channel] ?? channel,
     color: SERIES_COLORS[index % SERIES_COLORS.length],
   }))
 
@@ -70,6 +79,7 @@ export function ChannelTrendChart({ trend, channels }: ChannelTrendChartProps) {
             {channels.map((channel, index) => (
               <Line
                 key={channel}
+                name={labels[channel] ?? channel}
                 type="monotone"
                 dataKey={channel}
                 stroke={SERIES_COLORS[index % SERIES_COLORS.length]}

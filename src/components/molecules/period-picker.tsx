@@ -6,8 +6,8 @@ interface PeriodPickerProps {
   /** `null` quando o período em uso é um intervalo personalizado. */
   current: PeriodPresetId | null
   range: DateRange
-  /** Etapa selecionada no burn-up, preservada ao trocar de período. */
-  stage: string
+  /** Métrica selecionada no burn-up, preservada ao trocar de período. */
+  metric: string
 }
 
 /**
@@ -17,7 +17,7 @@ interface PeriodPickerProps {
  * formulário `GET`, que o navegador transforma em query string sozinho. Além de
  * não custar bundle, isso deixa qualquer período compartilhável por URL.
  */
-export function PeriodPicker({ current, range, stage }: PeriodPickerProps) {
+export function PeriodPicker({ current, range, metric }: PeriodPickerProps) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <nav aria-label="Período">
@@ -28,7 +28,7 @@ export function PeriodPicker({ current, range, stage }: PeriodPickerProps) {
             return (
               <li key={preset.id}>
                 <Link
-                  href={{ pathname: '/', query: { periodo: preset.id, etapa: stage } }}
+                  href={{ pathname: '/', query: { periodo: preset.id, metrica: metric } }}
                   aria-current={active ? 'page' : undefined}
                   className={
                     active
@@ -45,7 +45,7 @@ export function PeriodPicker({ current, range, stage }: PeriodPickerProps) {
       </nav>
 
       <form method="get" className="flex flex-wrap items-end gap-2">
-        <input type="hidden" name="etapa" value={stage} />
+        <input type="hidden" name="metrica" value={metric} />
 
         <label className="text-ink-muted flex flex-col gap-1 text-xs">
           De

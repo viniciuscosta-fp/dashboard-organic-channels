@@ -1,8 +1,8 @@
 import { Card } from '@/components/atoms/card'
 import { StatusBadge } from '@/components/molecules/status-badge'
-import type { ProjectionConfidence, StageAdherence } from '@/lib/data/goal-math'
-import { FUNNEL_STAGE_LABELS } from '@/lib/data/types'
-import { formatCount, formatRatio, formatSignedCount } from '@/lib/format'
+import type { MetricAdherence, ProjectionConfidence } from '@/lib/data/goal-math'
+import { METRIC_LABELS } from '@/lib/data/types'
+import { formatMetricValue, formatRatio, formatSignedMetric } from '@/lib/format'
 
 const CONFIDENCE_NOTE: Record<ProjectionConfidence, string | null> = {
   normal: null,
@@ -12,17 +12,17 @@ const CONFIDENCE_NOTE: Record<ProjectionConfidence, string | null> = {
 }
 
 interface GoalKpiCardProps {
-  adherence: StageAdherence
+  adherence: MetricAdherence
 }
 
 /**
- * Número da etapa com o contexto que o torna acionável.
+ * Número da métrica com o contexto que o torna acionável.
  *
  * Sozinho, "30 clientes" não diz nada. O que decide uma reunião é 30 contra a
  * meta, contra o ritmo esperado até aqui, e contra onde o mês vai fechar.
  */
 export function GoalKpiCard({ adherence }: GoalKpiCardProps) {
-  const { stage, actual, goalPeriod, gap, projection, projectedAttainment, status, confidence } =
+  const { metric, actual, goalPeriod, gap, projection, projectedAttainment, status, confidence } =
     adherence
 
   const note = CONFIDENCE_NOTE[confidence]
@@ -32,26 +32,28 @@ export function GoalKpiCard({ adherence }: GoalKpiCardProps) {
     <Card className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-ink-secondary text-xs font-medium tracking-wide uppercase">
-          {FUNNEL_STAGE_LABELS[stage]}
+          {METRIC_LABELS[metric]}
         </h3>
         <StatusBadge status={status} size="sm" />
       </div>
 
       <div>
-        <p className="text-ink text-4xl font-semibold">{formatCount(actual)}</p>
+        <p className="text-ink text-3xl font-semibold">{formatMetricValue(metric, actual)}</p>
         <p className="text-ink-muted mt-1 text-xs">
-          {hasGoal ? `de ${formatCount(goalPeriod)} no período` : 'sem meta cadastrada'}
+          {hasGoal
+            ? `de ${formatMetricValue(metric, goalPeriod)} no período`
+            : 'sem meta cadastrada'}
         </p>
       </div>
 
       {hasGoal ? (
         <dl className="border-hairline grid grid-cols-2 gap-x-3 gap-y-1 border-t pt-3 text-xs">
           <dt className="text-ink-muted">Contra o ritmo</dt>
-          <dd className="text-ink text-right tabular-nums">{formatSignedCount(gap)}</dd>
+          <dd className="text-ink text-right tabular-nums">{formatSignedMetric(metric, gap)}</dd>
 
           <dt className="text-ink-muted">Projeção</dt>
           <dd className="text-ink text-right tabular-nums">
-            {projection === null ? '—' : formatCount(Math.round(projection))}
+            {projection === null ? '—' : formatMetricValue(metric, projection)}
             {projectedAttainment === null ? '' : ` · ${formatRatio(projectedAttainment)}`}
           </dd>
         </dl>

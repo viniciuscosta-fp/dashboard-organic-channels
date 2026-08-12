@@ -13,12 +13,15 @@ import {
 
 import { SeriesLegend } from '@/components/molecules/series-legend'
 import type { BurnupPoint } from '@/lib/data/goal-math'
-import { formatCount, formatDayMonth } from '@/lib/format'
+import { isCurrencyMetric, type Metric } from '@/lib/data/types'
+import { formatCompactMetric, formatDayMonth, formatMetricValue } from '@/lib/format'
 
 interface BurnupChartProps {
   points: BurnupPoint[]
   /** Último dia com dado, para marcar onde o realizado acaba. */
   anchorDate: string | null
+  /** Define se os valores são lidos como reais ou como contagem. */
+  metric: Metric
 }
 
 /**
@@ -29,7 +32,7 @@ interface BurnupChartProps {
  * atenção. Assim o gráfico tem uma única matiz de dado, o que também o mantém
  * legível para quem não distingue cores.
  */
-export function BurnupChart({ points, anchorDate }: BurnupChartProps) {
+export function BurnupChart({ points, anchorDate, metric }: BurnupChartProps) {
   const data = points.map((point) => ({ ...point, label: formatDayMonth(point.date) }))
   const hasProjection = points.some((point) => point.projected !== null)
 
@@ -56,8 +59,13 @@ export function BurnupChart({ points, anchorDate }: BurnupChartProps) {
             <YAxis
               tickLine={false}
               axisLine={false}
-              width={48}
+              // Valor em reais precisa de mais espaço: em 56px, "165 mil" era
+              // cortado e virava "65 mil" — número errado, não só feio.
+              width={isCurrencyMetric(metric) ? 76 : 56}
               tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
+              // Receita cheia não cabe em tick de eixo; aqui abrevia e o
+              // tooltip mostra o valor completo.
+              tickFormatter={(value: number) => formatCompactMetric(metric, value)}
             />
             <Tooltip
               cursor={{ stroke: 'var(--axis)', strokeWidth: 1 }}
@@ -69,7 +77,7 @@ export function BurnupChart({ points, anchorDate }: BurnupChartProps) {
                 color: 'var(--ink)',
               }}
               labelStyle={{ color: 'var(--ink-secondary)', marginBottom: 4 }}
-              formatter={(value) => formatCount(Math.round(Number(value)))}
+              formatter={(value) => formatMetricValue(metric, Number(value))}
             />
 
             {anchorDate ? (

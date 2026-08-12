@@ -1,33 +1,42 @@
 import { StatusBadge } from '@/components/molecules/status-badge'
+import type { ChannelCatalog } from '@/lib/data/channel-catalog'
+import { labelOf } from '@/lib/data/channel-catalog'
 import type { ChannelAdherence } from '@/lib/data/goal-math'
-import { FUNNEL_STAGE_LABELS } from '@/lib/data/types'
-import { formatCount, formatRatio, formatSignedCount } from '@/lib/format'
+import { METRIC_LABELS } from '@/lib/data/types'
+import { formatMetricValue, formatRatio, formatSignedMetric } from '@/lib/format'
 
-const SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)']
+const SERIES_COLORS = [
+  'var(--series-1)',
+  'var(--series-2)',
+  'var(--series-3)',
+  'var(--series-4)',
+  'var(--series-5)',
+]
 
 interface ChannelGoalTableProps {
   channels: ChannelAdherence[]
+  catalog: ChannelCatalog
   /** Ordem canônica dos canais, para a cor casar com a do gráfico de linhas. */
   order: string[]
 }
 
 /**
- * Aderência de cada canal, etapa por etapa.
+ * Aderência de cada canal, métrica por métrica.
  *
  * É também a leitura alternativa em texto que as cores de série de contraste
  * mais baixo exigem: nenhum número do dashboard depende de distinguir matizes.
  */
-export function ChannelGoalTable({ channels, order }: ChannelGoalTableProps) {
+export function ChannelGoalTable({ channels, catalog, order }: ChannelGoalTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[46rem] text-sm">
+      <table className="w-full min-w-[48rem] text-sm">
         <thead>
           <tr className="text-ink-muted border-hairline border-b text-xs">
             <th scope="col" className="py-2 pr-3 text-left font-medium">
               Canal
             </th>
             <th scope="col" className="py-2 pr-3 text-left font-medium">
-              Etapa
+              Métrica
             </th>
             <th scope="col" className="py-2 pr-3 text-right font-medium">
               Realizado
@@ -52,51 +61,55 @@ export function ChannelGoalTable({ channels, order }: ChannelGoalTableProps) {
             key={entry.channel}
             className="border-hairline border-b tabular-nums last:border-0"
           >
-            {entry.stages.map((stage, index) => (
-              <tr key={stage.stage}>
+            {entry.metrics.map((metric, index) => (
+              <tr key={metric.metric}>
                 {index === 0 ? (
                   <th
                     scope="rowgroup"
-                    rowSpan={entry.stages.length}
+                    rowSpan={entry.metrics.length}
                     className="text-ink py-2.5 pr-3 text-left align-top font-medium"
                   >
                     <span className="flex items-center gap-2">
                       <span
                         aria-hidden
-                        className="size-2.5 shrink-0 rounded-full"
+                        className="mt-1 size-2.5 shrink-0 rounded-full"
                         style={{
                           backgroundColor:
                             SERIES_COLORS[order.indexOf(entry.channel) % SERIES_COLORS.length],
                         }}
                       />
-                      {entry.channel}
+                      {labelOf(catalog, entry.channel)}
                     </span>
                   </th>
                 ) : null}
 
-                <td className="text-ink-secondary py-2.5 pr-3">
-                  {FUNNEL_STAGE_LABELS[stage.stage]}
+                <td className="text-ink-secondary py-2.5 pr-3">{METRIC_LABELS[metric.metric]}</td>
+                <td className="text-ink py-2.5 pr-3 text-right">
+                  {formatMetricValue(metric.metric, metric.actual)}
                 </td>
-                <td className="text-ink py-2.5 pr-3 text-right">{formatCount(stage.actual)}</td>
                 <td className="text-ink-secondary py-2.5 pr-3 text-right">
-                  {stage.goalPeriod > 0 ? formatCount(Math.round(stage.goalPeriod)) : '—'}
+                  {metric.goalPeriod > 0
+                    ? formatMetricValue(metric.metric, metric.goalPeriod)
+                    : '—'}
                 </td>
                 <td className="text-ink py-2.5 pr-3 text-right">
-                  {stage.goalPeriod > 0 ? formatSignedCount(stage.gap) : '—'}
+                  {metric.goalPeriod > 0 ? formatSignedMetric(metric.metric, metric.gap) : '—'}
                 </td>
                 <td className="text-ink py-2.5 pr-3 text-right">
-                  {stage.projection === null ? '—' : formatCount(Math.round(stage.projection))}
-                  {stage.projectedAttainment === null ? (
+                  {metric.projection === null
+                    ? '—'
+                    : formatMetricValue(metric.metric, metric.projection)}
+                  {metric.projectedAttainment === null ? (
                     ''
                   ) : (
                     <span className="text-ink-muted">
                       {' '}
-                      · {formatRatio(stage.projectedAttainment)}
+                      · {formatRatio(metric.projectedAttainment)}
                     </span>
                   )}
                 </td>
                 <td className="py-2.5">
-                  <StatusBadge status={stage.status} size="sm" />
+                  <StatusBadge status={metric.status} size="sm" />
                 </td>
               </tr>
             ))}
