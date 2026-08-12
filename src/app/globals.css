@@ -26,6 +26,8 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
 
   /* Ordinal: uma única matiz, clara → escura, na ordem das etapas do funil. */
   --stage-1: #86b6ef;
@@ -51,6 +53,8 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
 
     --stage-1: #9ec5f4;
     --stage-2: #3987e5;

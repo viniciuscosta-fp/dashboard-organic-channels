@@ -30,23 +30,51 @@ interface ChannelProfile {
   opportunityRate: number
   /** Fração de oportunidades que vira cliente. */
   customerRate: number
+  /** Ticket médio em reais, usado para derivar a receita dos clientes do dia. */
+  averageTicket: number
 }
 
+/** As cinco chaves aceitas pelo webhook de métricas por canal. */
 const CHANNELS: ChannelProfile[] = [
   {
-    name: 'organic-search',
-    baseMqls: 13,
+    name: 'organic_site',
+    baseMqls: 11,
     dailyGrowth: 0.0006,
     opportunityRate: 0.26,
     customerRate: 0.28,
+    averageTicket: 2400,
   },
-  { name: 'direct', baseMqls: 5.4, dailyGrowth: 0.0004, opportunityRate: 0.27, customerRate: 0.29 },
   {
-    name: 'referral',
-    baseMqls: 2.4,
+    name: 'blog_fluencypass',
+    baseMqls: 6,
+    dailyGrowth: 0.0005,
+    opportunityRate: 0.24,
+    customerRate: 0.26,
+    averageTicket: 2200,
+  },
+  {
+    name: 'compare',
+    baseMqls: 4.5,
+    dailyGrowth: 0.0004,
+    opportunityRate: 0.3,
+    customerRate: 0.32,
+    averageTicket: 2600,
+  },
+  {
+    name: 'brand',
+    baseMqls: 3.5,
     dailyGrowth: 0.0003,
+    opportunityRate: 0.35,
+    customerRate: 0.4,
+    averageTicket: 3200,
+  },
+  {
+    name: 'ai_referrals',
+    baseMqls: 1.8,
+    dailyGrowth: 0.0018,
     opportunityRate: 0.28,
-    customerRate: 0.31,
+    customerRate: 0.3,
+    averageTicket: 2800,
   },
 ]
 
@@ -113,7 +141,16 @@ function snapshotFor(date: string, channel: ChannelProfile): FunnelSnapshot {
     noise(date, `${channel.name}:cust-round`),
   )
 
-  return { date, channel: channel.name, mqls, opportunities, customers }
+  // Receita segue os clientes fechados no dia, com o ticket variando em ±15%.
+  // Dia sem cliente é dia sem receita — é assim que o dado real se comporta.
+  const revenue =
+    customers === 0
+      ? 0
+      : Math.round(
+          customers * channel.averageTicket * (0.85 + noise(date, `${channel.name}:ticket`) * 0.3),
+        )
+
+  return { date, channel: channel.name, revenue, mqls, opportunities, customers }
 }
 
 /** Gera uma linha por dia e canal no intervalo, inclusivo nas duas pontas. */

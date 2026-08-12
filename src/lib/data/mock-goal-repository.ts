@@ -1,20 +1,23 @@
 import type { GoalRepository } from './goal-repository'
-import { FUNNEL_STAGES, type FunnelStage, type MonthlyGoal } from './types'
+import { METRICS, type Metric, type MonthlyGoal } from './types'
 
 /**
  * Metas de exemplo, calibradas contra o que `mock-funnel-repository` gera.
  *
  * Os alvos foram escolhidos para o dashboard mostrar os três status de uma vez:
- * `organic-search` fecha perto da meta, `direct` fica na faixa de atenção e
- * `referral` aparece em risco. Um mock em que tudo bate a meta não exercita a
- * parte do dashboard que existe justamente para avisar quando algo não bate.
+ * `organic_site` e `compare` fecham perto da meta, `blog_fluencypass` e
+ * `ai_referrals` ficam na faixa de atenção e `brand` aparece em risco. Um mock
+ * em que tudo bate a meta não exercita a parte do dashboard que existe
+ * justamente para avisar quando algo não bate.
  */
 
 /** Meta mensal de referência, no mês de `REFERENCE_MONTH`. */
-const GOAL_BASE: Record<string, Record<FunnelStage, number>> = {
-  'organic-search': { mqls: 390, opportunities: 105, customers: 30 },
-  direct: { mqls: 165, opportunities: 44, customers: 11 },
-  referral: { mqls: 75, opportunities: 28, customers: 9 },
+const GOAL_BASE: Record<string, Record<Metric, number>> = {
+  organic_site: { revenue: 59000, mqls: 335, opportunities: 88, customers: 24 },
+  blog_fluencypass: { revenue: 31000, mqls: 200, opportunities: 50, customers: 15 },
+  compare: { revenue: 31000, mqls: 124, opportunities: 36, customers: 12 },
+  brand: { revenue: 56000, mqls: 118, opportunities: 43, customers: 17 },
+  ai_referrals: { revenue: 28500, mqls: 122, opportunities: 36, customers: 10 },
 }
 
 const REFERENCE_MONTH = '2026-08'
@@ -48,12 +51,12 @@ export function generateGoals(): MonthlyGoal[] {
     const growth = (1 + MONTHLY_GROWTH) ** (monthIndex(month) - reference)
 
     for (const [channel, targets] of Object.entries(GOAL_BASE)) {
-      for (const stage of FUNNEL_STAGES) {
+      for (const metric of METRICS) {
         goals.push({
           month,
           channel,
-          stage,
-          target: Math.round(targets[stage] * growth),
+          metric,
+          target: Math.round(targets[metric] * growth),
         })
       }
     }
