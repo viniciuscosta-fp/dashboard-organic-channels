@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyFunnelQuery, listChannels, sumFunnelStages } from './funnel-query'
-import { MockFunnelRepository } from './mock-funnel-repository'
 import type { FunnelSnapshot } from './types'
 
 const snapshots: FunnelSnapshot[] = [
@@ -65,29 +64,5 @@ describe('sumFunnelStages', () => {
 describe('listChannels', () => {
   it('devolve canais únicos em ordem alfabética', () => {
     expect(listChannels(snapshots)).toEqual(['direct', 'organic-search', 'referral'])
-  })
-})
-
-describe('MockFunnelRepository', () => {
-  it('se identifica como fonte mock', () => {
-    expect(new MockFunnelRepository().source).toBe('mock')
-  })
-
-  it('aplica a query igual às demais implementações', async () => {
-    const repository = new MockFunnelRepository(snapshots)
-
-    await expect(repository.getSnapshots({ channels: ['referral'] })).resolves.toEqual([
-      { date: '2026-03-01', channel: 'referral', mqls: 7, opportunities: 3, customers: 1 },
-    ])
-  })
-
-  it('entrega os dados de exemplo embutidos por padrão', async () => {
-    const result = await new MockFunnelRepository().getSnapshots()
-
-    expect(result.length).toBeGreaterThan(0)
-    expect(result[0]).toMatchObject({
-      date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      channel: expect.any(String),
-    })
   })
 })

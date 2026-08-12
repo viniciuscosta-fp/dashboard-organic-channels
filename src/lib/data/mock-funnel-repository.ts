@@ -1,125 +1,144 @@
+import { eachDay, isBusinessDay } from '../business-days'
 import { applyFunnelQuery } from './funnel-query'
 import type { FunnelRepository } from './funnel-repository'
 import type { FunnelQuery, FunnelSnapshot } from './types'
 
 /**
- * Doze meses de dados fictícios, com formato idêntico ao da planilha real.
+ * Fonte de exemplo usada em desenvolvimento e nos testes.
  *
- * Números inventados e plausíveis: crescimento leve ao longo do ano e taxas de
- * conversão estáveis entre etapas. Servem para desenvolver e testar a UI sem
- * depender de credencial nenhuma.
+ * Os números são **gerados**, não tabelados: um ano de dado diário em três
+ * canais daria mais de mil linhas escritas à mão, ilegíveis e impossíveis de
+ * manter. O gerador embute duas características do dado real que a lógica de
+ * negócio precisa exercitar — queda para quase zero no fim de semana e leve
+ * tendência de alta ao longo do tempo.
+ *
+ * A geração é **determinística**: o mesmo dia e canal sempre produzem o mesmo
+ * número. Valor aleatório a cada chamada quebraria `use cache` e a hidratação
+ * do React, além de fazer o dashboard mudar sozinho a cada recarga.
+ *
+ * Não lê relógio. O intervalo pedido é a única entrada — quem decide não pedir
+ * datas futuras é a rota, em `src/app/page.tsx`.
  */
-export const MOCK_SNAPSHOTS: readonly FunnelSnapshot[] = [
-  { date: '2025-09-01', channel: 'organic-search', mqls: 182, opportunities: 41, customers: 9 },
-  { date: '2025-09-01', channel: 'direct', mqls: 74, opportunities: 19, customers: 5 },
-  { date: '2025-09-01', channel: 'referral', mqls: 31, opportunities: 8, customers: 2 },
+
+interface ChannelProfile {
+  name: string
+  /** MQLs por dia útil no início da série. */
+  baseMqls: number
+  /** Crescimento composto por dia corrido. */
+  dailyGrowth: number
+  /** Fração de MQLs que vira oportunidade. */
+  opportunityRate: number
+  /** Fração de oportunidades que vira cliente. */
+  customerRate: number
+}
+
+const CHANNELS: ChannelProfile[] = [
   {
-    date: '2025-10-01',
-    channel: 'organic-search',
-    mqls: 196,
-    opportunities: 47,
-    customers: 11,
+    name: 'organic-search',
+    baseMqls: 13,
+    dailyGrowth: 0.0006,
+    opportunityRate: 0.26,
+    customerRate: 0.28,
   },
-  { date: '2025-10-01', channel: 'direct', mqls: 81, opportunities: 21, customers: 6 },
-  { date: '2025-10-01', channel: 'referral', mqls: 28, opportunities: 7, customers: 1 },
+  { name: 'direct', baseMqls: 5.4, dailyGrowth: 0.0004, opportunityRate: 0.27, customerRate: 0.29 },
   {
-    date: '2025-11-01',
-    channel: 'organic-search',
-    mqls: 214,
-    opportunities: 52,
-    customers: 13,
+    name: 'referral',
+    baseMqls: 2.4,
+    dailyGrowth: 0.0003,
+    opportunityRate: 0.28,
+    customerRate: 0.31,
   },
-  { date: '2025-11-01', channel: 'direct', mqls: 88, opportunities: 22, customers: 6 },
-  { date: '2025-11-01', channel: 'referral', mqls: 35, opportunities: 9, customers: 2 },
-  { date: '2025-12-01', channel: 'organic-search', mqls: 173, opportunities: 39, customers: 8 },
-  { date: '2025-12-01', channel: 'direct', mqls: 69, opportunities: 16, customers: 4 },
-  { date: '2025-12-01', channel: 'referral', mqls: 22, opportunities: 5, customers: 1 },
-  {
-    date: '2026-01-01',
-    channel: 'organic-search',
-    mqls: 241,
-    opportunities: 61,
-    customers: 15,
-  },
-  { date: '2026-01-01', channel: 'direct', mqls: 95, opportunities: 25, customers: 7 },
-  { date: '2026-01-01', channel: 'referral', mqls: 39, opportunities: 10, customers: 3 },
-  {
-    date: '2026-02-01',
-    channel: 'organic-search',
-    mqls: 228,
-    opportunities: 57,
-    customers: 14,
-  },
-  { date: '2026-02-01', channel: 'direct', mqls: 92, opportunities: 24, customers: 6 },
-  { date: '2026-02-01', channel: 'referral', mqls: 41, opportunities: 11, customers: 3 },
-  {
-    date: '2026-03-01',
-    channel: 'organic-search',
-    mqls: 259,
-    opportunities: 66,
-    customers: 17,
-  },
-  { date: '2026-03-01', channel: 'direct', mqls: 103, opportunities: 27, customers: 8 },
-  { date: '2026-03-01', channel: 'referral', mqls: 44, opportunities: 12, customers: 3 },
-  {
-    date: '2026-04-01',
-    channel: 'organic-search',
-    mqls: 247,
-    opportunities: 62,
-    customers: 15,
-  },
-  { date: '2026-04-01', channel: 'direct', mqls: 98, opportunities: 26, customers: 7 },
-  { date: '2026-04-01', channel: 'referral', mqls: 37, opportunities: 9, customers: 2 },
-  {
-    date: '2026-05-01',
-    channel: 'organic-search',
-    mqls: 273,
-    opportunities: 71,
-    customers: 19,
-  },
-  { date: '2026-05-01', channel: 'direct', mqls: 109, opportunities: 29, customers: 8 },
-  { date: '2026-05-01', channel: 'referral', mqls: 46, opportunities: 13, customers: 4 },
-  {
-    date: '2026-06-01',
-    channel: 'organic-search',
-    mqls: 288,
-    opportunities: 76,
-    customers: 21,
-  },
-  { date: '2026-06-01', channel: 'direct', mqls: 114, opportunities: 31, customers: 9 },
-  { date: '2026-06-01', channel: 'referral', mqls: 49, opportunities: 14, customers: 4 },
-  {
-    date: '2026-07-01',
-    channel: 'organic-search',
-    mqls: 301,
-    opportunities: 79,
-    customers: 22,
-  },
-  { date: '2026-07-01', channel: 'direct', mqls: 118, opportunities: 32, customers: 9 },
-  { date: '2026-07-01', channel: 'referral', mqls: 52, opportunities: 15, customers: 5 },
-  {
-    date: '2026-08-01',
-    channel: 'organic-search',
-    mqls: 316,
-    opportunities: 84,
-    customers: 24,
-  },
-  { date: '2026-08-01', channel: 'direct', mqls: 123, opportunities: 34, customers: 10 },
-  { date: '2026-08-01', channel: 'referral', mqls: 55, opportunities: 16, customers: 5 },
 ]
 
+/** Data a partir da qual a tendência de crescimento é contada. */
+const SERIES_START = '2025-01-01'
+
+/** Fim de semana não zera de todo — fica no ruído de formulário fora do horário. */
+const WEEKEND_FACTOR = 0.05
+
+/** FNV-1a: hash rápido e estável, suficiente para semear ruído de exemplo. */
+function hash(seed: string): number {
+  let value = 2_166_136_261
+
+  for (let index = 0; index < seed.length; index += 1) {
+    value ^= seed.charCodeAt(index)
+    value = Math.imul(value, 16_777_619)
+  }
+
+  return value >>> 0
+}
+
+/** Ruído determinístico entre 0 e 1 para um par de dia e chave. */
+function noise(date: string, key: string): number {
+  return hash(`${date}:${key}`) / 4_294_967_296
+}
+
+function daysSinceStart(date: string): number {
+  const from = new Date(`${SERIES_START}T00:00:00Z`).getTime()
+  const to = new Date(`${date}T00:00:00Z`).getTime()
+  return Math.max(0, Math.round((to - from) / 86_400_000))
+}
+
 /**
- * Implementação em memória usada em desenvolvimento e nos testes.
+ * Arredondamento estocástico determinístico.
  *
- * É a implementação padrão: `npm run dev` funciona logo após o clone, sem
- * credencial nenhuma.
+ * Arredondar 0,3 para zero todo dia zeraria o mês inteiro de um canal pequeno —
+ * era o que acontecia com os clientes de `referral`. Aqui a parte fracionária
+ * vira a probabilidade de subir, o que preserva o total esperado no mês sem
+ * abrir mão de determinismo, já que o sorteio vem do mesmo ruído semeado.
  */
+function stochasticRound(value: number, seed: number): number {
+  const floor = Math.floor(value)
+  return floor + (seed < value - floor ? 1 : 0)
+}
+
+function snapshotFor(date: string, channel: ChannelProfile): FunnelSnapshot {
+  const trend = (1 + channel.dailyGrowth) ** daysSinceStart(date)
+  const weekday = isBusinessDay(date) ? 1 : WEEKEND_FACTOR
+
+  // Ruído de ±25% em torno da base, para a série não sair artificialmente lisa.
+  const variation = 0.75 + noise(date, `${channel.name}:mqls`) * 0.5
+  const mqls = stochasticRound(
+    channel.baseMqls * trend * weekday * variation,
+    noise(date, `${channel.name}:mqls-round`),
+  )
+
+  const opportunities = stochasticRound(
+    mqls * channel.opportunityRate * (0.8 + noise(date, `${channel.name}:opp`) * 0.4),
+    noise(date, `${channel.name}:opp-round`),
+  )
+
+  const customers = stochasticRound(
+    opportunities * channel.customerRate * (0.7 + noise(date, `${channel.name}:cust`) * 0.6),
+    noise(date, `${channel.name}:cust-round`),
+  )
+
+  return { date, channel: channel.name, mqls, opportunities, customers }
+}
+
+/** Gera uma linha por dia e canal no intervalo, inclusivo nas duas pontas. */
+export function generateSnapshots(from: string, to: string): FunnelSnapshot[] {
+  const snapshots: FunnelSnapshot[] = []
+
+  for (const date of eachDay(from, to)) {
+    for (const channel of CHANNELS) {
+      snapshots.push(snapshotFor(date, channel))
+    }
+  }
+
+  return snapshots
+}
+
+/** Intervalo gerado quando a consulta não delimita um período. */
+const DEFAULT_RANGE = { from: '2025-06-01', to: '2026-12-31' }
+
 export class MockFunnelRepository implements FunnelRepository {
   readonly source = 'mock' as const
 
-  constructor(private readonly snapshots: readonly FunnelSnapshot[] = MOCK_SNAPSHOTS) {}
-
   async getSnapshots(query?: FunnelQuery): Promise<FunnelSnapshot[]> {
-    return applyFunnelQuery(this.snapshots, query)
+    const from = query?.from ?? DEFAULT_RANGE.from
+    const to = query?.to ?? DEFAULT_RANGE.to
+
+    return applyFunnelQuery(generateSnapshots(from, to), query)
   }
 }

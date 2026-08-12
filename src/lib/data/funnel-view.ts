@@ -1,4 +1,6 @@
-import { formatMonth } from '../format'
+import { monthOf, startOfWeek } from '../business-days'
+import { formatDayMonth, formatMonth } from '../format'
+import type { DateRange } from '../period'
 import { listChannels, sumFunnelStages } from './funnel-query'
 import {
   FUNNEL_STAGES,
@@ -53,29 +55,71 @@ export function buildStageData(totals: FunnelTotals): StageDatum[] {
   })
 }
 
+export type TrendGranularity = 'diaria' | 'semanal' | 'mensal'
+
 /**
- * Série temporal de MQLs por canal.
+ * Escolhe o agrupamento do gráfico pelo tamanho do período.
  *
- * Todo período recebe uma entrada para cada canal conhecido, com zero quando
+ * Com dado diário, um trimestre renderiza mais de noventa pontos por canal —
+ * ilegível e ainda por cima ruidoso, já que o efeito de dia da semana domina a
+ * leitura. Agrupar por semana ou mês devolve a tendência que o gráfico existe
+ * para mostrar.
+ */
+export function trendGranularity(range: DateRange): TrendGranularity {
+  const days =
+    Math.round(
+      (new Date(`${range.to}T00:00:00Z`).getTime() -
+        new Date(`${range.from}T00:00:00Z`).getTime()) /
+        86_400_000,
+    ) + 1
+
+  if (days <= 45) return 'diaria'
+  if (days <= 180) return 'semanal'
+  return 'mensal'
+}
+
+function bucketOf(date: string, granularity: TrendGranularity): string {
+  if (granularity === 'diaria') return date
+  if (granularity === 'semanal') return startOfWeek(date)
+  return `${monthOf(date)}-01`
+}
+
+function bucketLabel(bucket: string, granularity: TrendGranularity): string {
+  return granularity === 'mensal' ? formatMonth(bucket) : formatDayMonth(bucket)
+}
+
+/**
+ * Série temporal de MQLs por canal, agrupada conforme a granularidade.
+ *
+ * Todo intervalo recebe uma entrada para cada canal conhecido, com zero quando
  * não há dado — sem isso a linha do canal ficaria com buracos e sugeriria
  * ausência de medição onde houve medição de valor zero.
  */
-export function buildTrendData(snapshots: readonly FunnelSnapshot[]): TrendDatum[] {
+export function buildTrendData(
+  snapshots: readonly FunnelSnapshot[],
+  granularity: TrendGranularity = 'mensal',
+): TrendDatum[] {
   const channels = listChannels(snapshots)
-  const byDate = new Map<string, Record<string, number>>()
+  const byBucket = new Map<string, Record<string, number>>()
 
   for (const snapshot of snapshots) {
-    let entry = byDate.get(snapshot.date)
+    const bucket = bucketOf(snapshot.date, granularity)
+
+    let entry = byBucket.get(bucket)
     if (!entry) {
       entry = Object.fromEntries(channels.map((channel) => [channel, 0]))
-      byDate.set(snapshot.date, entry)
+      byBucket.set(bucket, entry)
     }
     entry[snapshot.channel] += snapshot.mqls
   }
 
-  return [...byDate.entries()]
+  return [...byBucket.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, values]) => ({ date, label: formatMonth(date), channels: values }))
+    .map(([date, values]) => ({
+      date,
+      label: bucketLabel(date, granularity),
+      channels: values,
+    }))
 }
 
 /** Consolida os totais de cada canal, do maior para o menor volume de MQLs. */

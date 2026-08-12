@@ -11,8 +11,37 @@ const monthFormatter = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'UTC',
 })
 
+const longDayFormatter = new Intl.DateTimeFormat('pt-BR', {
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+})
+
 export function formatCount(value: number): string {
   return integerFormatter.format(value)
+}
+
+/**
+ * Contagem com sinal explícito, para gap contra a meta.
+ *
+ * O `+` é obrigatório: sem ele, "12" e "−12" só se distinguem por um caractere
+ * fácil de perder de vista numa tabela.
+ */
+export function formatSignedCount(value: number): string {
+  const rounded = Math.round(value)
+  if (rounded === 0) return '0'
+  return `${rounded > 0 ? '+' : '−'}${integerFormatter.format(Math.abs(rounded))}`
+}
+
+/** `2026-08-12` → `12/08`. */
+export function formatDayMonth(isoDate: string): string {
+  const [, month, day] = isoDate.split('-')
+  return `${day}/${month}`
+}
+
+/** `2026-08-12` → `12 de agosto`. */
+export function formatLongDay(isoDate: string): string {
+  return longDayFormatter.format(new Date(`${isoDate}T00:00:00Z`))
 }
 
 /** Formata uma razão já calculada como percentual. */
