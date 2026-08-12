@@ -10,6 +10,10 @@ export const FUNNEL_STAGES = ['mqls', 'opportunities', 'customers'] as const
 
 export type FunnelStage = (typeof FUNNEL_STAGES)[number]
 
+export function isFunnelStage(value: unknown): value is FunnelStage {
+  return typeof value === 'string' && (FUNNEL_STAGES as readonly string[]).includes(value)
+}
+
 export const FUNNEL_STAGE_LABELS: Record<FunnelStage, string> = {
   mqls: 'MQLs',
   opportunities: 'Oportunidades',
@@ -64,3 +68,26 @@ export interface FunnelQuery {
 
 /** Totais consolidados de um conjunto de snapshots. */
 export type FunnelTotals = Record<FunnelStage, number>
+
+/**
+ * Meta **mensal** de uma etapa num canal.
+ *
+ * A meta é sempre cadastrada por mês cheio. O rateio para o período que o
+ * usuário selecionou acontece em `src/lib/data/goal-math.ts`, por dias úteis.
+ */
+export interface MonthlyGoal {
+  /** Mês de referência, ISO `AAAA-MM`. */
+  month: string
+  channel: string
+  stage: FunnelStage
+  target: number
+}
+
+const isoMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mês deve estar em ISO AAAA-MM')
+
+export const monthlyGoalSchema = z.object({
+  month: isoMonth,
+  channel: z.string().min(1, 'canal não pode ser vazio'),
+  stage: z.enum(FUNNEL_STAGES),
+  target: count,
+}) satisfies z.ZodType<MonthlyGoal>
