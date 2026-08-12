@@ -1,8 +1,12 @@
 # Dashboard de Canais Orgânicos
 
-Funil de MQLs, oportunidades e clientes por canal de origem. Os dados vêm do
-HubSpot, passam por um flow do n8n e chegam ao dashboard através de uma planilha
-do Google.
+Aderência à meta de MQLs, oportunidades e clientes por canal de origem. Os dados
+vêm do HubSpot, passam por um flow do n8n e chegam ao dashboard através de uma
+planilha do Google.
+
+Além dos números realizados, o dashboard mostra a meta rateada para o período
+selecionado, o gap contra o ritmo esperado e onde o período fecha mantendo a
+tendência recente do canal.
 
 ## Rodando localmente
 
@@ -43,10 +47,13 @@ GOOGLE_SERVICE_ACCOUNT_EMAIL=...@....iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 FUNNEL_SHEET_ID=<trecho entre /d/ e /edit na URL>
 FUNNEL_SHEET_RANGE=funil!A:E
+GOALS_SHEET_RANGE=metas!A:D
 ```
 
-A planilha precisa seguir [`docs/data-contract.md`](docs/data-contract.md) —
-o mesmo contrato que o flow do n8n escreve.
+A planilha precisa de **duas abas** e seguir
+[`docs/data-contract.md`](docs/data-contract.md), o mesmo contrato que o flow do
+n8n escreve: `funil`, com uma linha por dia e canal, e `metas`, com a meta
+mensal de cada canal e etapa.
 
 Confirme com `curl http://localhost:3000/api/health`: o campo `source` diz qual
 fonte está ativa.

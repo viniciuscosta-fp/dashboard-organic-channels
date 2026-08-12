@@ -1,7 +1,8 @@
 # CLAUDE.md
 
-Dashboard do funil de canais orgânicos da Fluencypass. Responde uma pergunta:
-quantos MQLs, oportunidades e clientes cada canal gerou, e como isso evolui.
+Dashboard de aderência à meta dos canais orgânicos da Fluencypass. Responde
+duas perguntas: quanto cada canal entregou de MQL, oportunidade e cliente, e
+onde o período vai fechar mantendo o ritmo atual.
 
 Escreva código, comentários, mensagens de commit e texto de interface em
 **português brasileiro**. Identificadores em inglês.
@@ -31,20 +32,25 @@ de cache, roteamento ou renderização de memória.
 ## Arquitetura
 
 ```
-n8n → Google Sheets → SheetsFunnelRepository ─┐
-                                              ├→ getFunnelSnapshots() → page.tsx → componentes
-                      MockFunnelRepository ───┘        (use cache)
+n8n → Sheets (abas funil e metas) → repositórios ─→ getFunnelSnapshots() ─┐
+                                    mocks ─────────→ getGoals()           ├→ computeAdherence()
+                                                        (use cache)       │        ↓
+                                                                          └→ page.tsx → componentes
 ```
 
 | Caminho                             | Papel                                                    |
 | ----------------------------------- | -------------------------------------------------------- |
 | `src/lib/data/funnel-repository.ts` | Interface `FunnelRepository` e `FunnelDataError`         |
-| `src/lib/data/funnel-service.ts`    | Factory, cache (`use cache`), entrada da UI              |
+| `src/lib/data/goal-repository.ts`   | Interface `GoalRepository`                               |
+| `src/lib/data/funnel-service.ts`    | Factories, cache (`use cache`), entrada da UI            |
 | `src/lib/data/*-parser.ts`          | Parsing puro de fonte externa, sem rede                  |
+| `src/lib/data/goal-math.ts`         | Rateio, gap, ritmo, projeção, status, burn-up            |
+| `src/lib/business-days.ts`          | Aritmética de dias úteis                                 |
+| `src/lib/period.ts`                 | Presets de período e leitura da URL                      |
 | `src/lib/data/funnel-view.ts`       | Modelos de visualização, funções puras                   |
 | `src/lib/env.ts`                    | Validação de ambiente com Zod, falha alto                |
 | `src/components/`                   | Atomic Design: atoms → molecules → organisms → templates |
-| `src/app/page.tsx`                  | Único lugar que busca dados                              |
+| `src/app/page.tsx`                  | Único lugar que busca dados e lê relógio                 |
 
 ### Regras que não se quebram
 
@@ -54,31 +60,59 @@ n8n → Google Sheets → SheetsFunnelRepository ─┐
 2. **Busca de dados fica na rota**, não dentro de componente. Componente recebe
    props prontas.
 3. **Cache mora só em `funnel-service.ts`.** Repositório sempre bate na fonte.
-4. **Só dados agregados.** Nenhum campo que identifique uma pessoa entra no
+4. **Nada de relógio dentro de `use cache`.** `new Date()` num escopo cacheado
+   congela junto com o cache e a projeção erra. A data de hoje é lida em
+   `page.tsx`, depois de `connection()`, e desce como argumento.
+5. **Só dados agregados.** Nenhum campo que identifique uma pessoa entra no
    modelo, no mock, no teste ou na planilha. Se um pedido exigir isso, pare e
    peça decisão humana.
-5. **Server Component por padrão.** `'use client'` apenas para os gráficos.
+6. **Server Component por padrão.** `'use client'` apenas para os gráficos.
 
 Para adicionar uma fonte nova, use a skill `funnel-repository-contract` ou o
 agente `funnel-source-agent`.
 
+## Aderência à meta
+
+Meta é cadastrada por **mês** e rateada para o período selecionado
+proporcionalmente aos **dias úteis** de cada mês. A mesma base de dias vale
+para o rateio e para a projeção — misturar as duas faz os números brigarem.
+
+Projeção é `realizado + ritmo dos últimos 10 dias úteis × dias úteis
+restantes`. A janela atravessa o início do período de propósito, senão a
+primeira quinzena de todo mês ficaria sem projeção.
+
+O decorrido é medido contra a **última data com dado**, não contra o
+calendário: flow atrasado não pode virar atraso de meta.
+
+Limiares e janelas são constantes nomeadas no topo de `goal-math.ts`. Ajuste
+ali, nunca espalhado pela lógica. O porquê de cada escolha está em
+`docs/decisions/0003`.
+
 ## Dados
 
-`docs/data-contract.md` é o contrato entre o flow do n8n e o código: nome,
-ordem e formato das colunas. Mudou coluna na planilha? O doc muda no mesmo
-commit que o parser.
+`docs/data-contract.md` é o contrato entre o flow do n8n e o código. Mudou
+coluna na planilha? O doc muda no mesmo commit que o parser.
 
-Colunas: `date`, `channel`, `mqls`, `opportunities`, `customers`. Mapeadas por
-nome, nunca por posição.
+Duas abas: `funil`, com uma linha **por dia e canal** (`date`, `channel`,
+`mqls`, `opportunities`, `customers`), e `metas`, com uma linha por mês, canal
+e etapa (`month`, `channel`, `stage`, `target`). Colunas são mapeadas por nome,
+nunca por posição.
+
+A granularidade diária é requisito: sem ela não há ritmo, tendência nem
+projeção.
 
 ## Cores e gráficos
 
 Nunca escreva hex em componente — use os tokens de `src/app/globals.css`.
-`--series-1..3` identificam canais; `--stage-1..3`, etapas do funil.
+`--series-1..3` identificam canais; `--stage-1..3`, etapas do funil. A exceção
+é a paleta de status em `status-badge.tsx`, fixa e independente de tema.
 
 Os hexes foram validados para daltonismo e contraste nos modos claro e escuro.
 Trocar um exige revalidar a paleta inteira. Todo gráfico leva tooltip; duas ou
 mais séries exigem legenda; eixo duplo é proibido.
+
+Status nunca é comunicado só por cor: sempre ícone **e** rótulo. No modo claro
+o amarelo de atenção fica abaixo de 3:1, e é o par que sustenta a leitura.
 
 ## Testes
 

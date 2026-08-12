@@ -25,10 +25,22 @@ interface FunnelRepository {
   readonly source: FunnelDataSource
   getSnapshots(query?: FunnelQuery): Promise<FunnelSnapshot[]>
 }
+
+interface GoalRepository {
+  readonly source: FunnelDataSource
+  getGoals(): Promise<MonthlyGoal[]>
+}
 ```
 
-`FunnelSnapshot` carrega apenas números agregados: `date` (ISO `YYYY-MM-DD`),
-`channel`, `mqls`, `opportunities`, `customers`. Nada em nível de lead.
+`FunnelSnapshot` carrega apenas números agregados: `date` (ISO `AAAA-MM-DD`, **o
+dia**), `channel`, `mqls`, `opportunities`, `customers`. Nada em nível de lead.
+
+`MonthlyGoal` é a meta **mensal** de uma etapa num canal: `month` (ISO
+`AAAA-MM`), `channel`, `stage`, `target`. O rateio para o período selecionado
+acontece em `goal-math.ts`, nunca no repositório.
+
+Autenticação e transporte do Google Sheets são compartilhados em
+`sheets-client.ts` — não duplique o cliente JWT numa fonte nova.
 
 `getSnapshots` devolve ordenado por data e depois por canal. Se a fonte não
 souber filtrar, aplique `applyFunnelQuery` — não reimplemente o filtro.
