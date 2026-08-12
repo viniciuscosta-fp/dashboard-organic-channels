@@ -3,25 +3,30 @@ import 'server-only'
 import { cacheLife, cacheTag } from 'next/cache'
 
 import { getEnv } from '../env'
-import type { GoalRepository } from './goal-repository'
+import type { ChannelRepository } from './channel-repository'
 import type { FunnelRepository } from './funnel-repository'
+import type { GoalRepository } from './goal-repository'
+import { MockChannelRepository } from './mock-channel-repository'
 import { MockFunnelRepository } from './mock-funnel-repository'
 import { MockGoalRepository } from './mock-goal-repository'
-import type { FunnelQuery, FunnelSnapshot, MonthlyGoal } from './types'
+import type { ChannelInfo, FunnelQuery, FunnelSnapshot, MonthlyGoal } from './types'
 
 /**
  * Tags de cache.
  *
  * Um endpoint de revalidação sob demanda pode chamar `revalidateTag` com estas
- * tags para que o n8n derrube o cache logo após escrever na planilha, em vez de
- * esperar a janela de tempo expirar. Metas e funil têm tags separadas porque
- * mudam em ritmos diferentes: meta muda uma vez por mês.
+ * tags para que a coleta derrube o cache logo após escrever na planilha, em vez
+ * de esperar a janela de tempo expirar. As três abas têm tags separadas porque
+ * mudam em ritmos diferentes: o funil todo dia, metas uma vez por mês, canais
+ * raramente.
  */
 export const FUNNEL_CACHE_TAG = 'funnel'
 export const GOALS_CACHE_TAG = 'goals'
+export const CHANNELS_CACHE_TAG = 'channels'
 
 let repository: FunnelRepository | undefined
 let goalRepository: GoalRepository | undefined
+let channelRepository: ChannelRepository | undefined
 
 /**
  * Escolhe a implementação de `FunnelRepository` conforme `DATA_SOURCE`.
@@ -93,4 +98,33 @@ export async function getGoals(): Promise<MonthlyGoal[]> {
 
   const source = await getGoalRepository()
   return source.getGoals()
+}
+
+/** Escolhe a implementação de `ChannelRepository`, pelo mesmo `DATA_SOURCE`. */
+export async function getChannelRepository(): Promise<ChannelRepository> {
+  if (channelRepository) return channelRepository
+
+  if (getEnv().DATA_SOURCE === 'sheets') {
+    const { SheetsChannelRepository } = await import('./sheets-channel-repository')
+    channelRepository = new SheetsChannelRepository()
+  } else {
+    channelRepository = new MockChannelRepository()
+  }
+
+  return channelRepository
+}
+
+/**
+ * Ponto de entrada da UI para ler o cadastro de canais.
+ *
+ * Cacheado por um dia, como as metas: canal novo é decisão ocasional. Tag
+ * própria para poder derrubar só o cadastro ao incluir um canal.
+ */
+export async function getChannels(): Promise<ChannelInfo[]> {
+  'use cache'
+  cacheLife('days')
+  cacheTag(CHANNELS_CACHE_TAG)
+
+  const source = await getChannelRepository()
+  return source.getChannels()
 }
