@@ -1,10 +1,10 @@
 import { monthOf, startOfWeek } from '../business-days'
 import { formatDayMonth, formatMonth } from '../format'
 import type { DateRange } from '../period'
-import { listChannels, sumFunnelStages } from './funnel-query'
+import { listChannels } from './funnel-query'
 import {
   FUNNEL_STAGES,
-  FUNNEL_STAGE_LABELS,
+  METRIC_LABELS,
   type FunnelSnapshot,
   type FunnelStage,
   type FunnelTotals,
@@ -35,11 +35,13 @@ export interface TrendDatum {
   channels: Record<string, number>
 }
 
-export interface ChannelRow extends FunnelTotals {
-  channel: string
-}
-
-/** Monta as barras do funil, com a taxa de conversão entre etapas vizinhas. */
+/**
+ * Monta as barras do funil, com a taxa de conversão entre etapas vizinhas.
+ *
+ * Recebe os totais de todas as métricas mas usa só as três etapas: receita não
+ * é um estreitamento por onde as pessoas passam, e entrar aqui distorceria a
+ * leitura do funil.
+ */
 export function buildStageData(totals: FunnelTotals): StageDatum[] {
   return FUNNEL_STAGES.map((stage, index) => {
     const previous = index === 0 ? undefined : FUNNEL_STAGES[index - 1]
@@ -47,7 +49,7 @@ export function buildStageData(totals: FunnelTotals): StageDatum[] {
 
     return {
       stage,
-      label: FUNNEL_STAGE_LABELS[stage],
+      label: METRIC_LABELS[stage],
       value: totals[stage],
       conversionFromPrevious:
         previousValue === undefined || previousValue === 0 ? null : totals[stage] / previousValue,
@@ -120,14 +122,4 @@ export function buildTrendData(
       label: bucketLabel(date, granularity),
       channels: values,
     }))
-}
-
-/** Consolida os totais de cada canal, do maior para o menor volume de MQLs. */
-export function buildChannelRows(snapshots: readonly FunnelSnapshot[]): ChannelRow[] {
-  return listChannels(snapshots)
-    .map((channel) => ({
-      channel,
-      ...sumFunnelStages(snapshots.filter((snapshot) => snapshot.channel === channel)),
-    }))
-    .sort((a, b) => b.mqls - a.mqls)
 }
