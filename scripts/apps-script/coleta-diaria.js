@@ -25,11 +25,14 @@
  * CARGA HISTÓRICA — faça em etapas, nesta ordem
  * ----------------------------------------------------------------------------
  *
- *   1. `coletarOntem()`                        → confira os números
- *   2. `coletarOntem()` de novo                → tem que continuar 5 linhas
- *   3. `backfill('2026-08-03','2026-08-09')`   → uma semana
- *   4. `backfill` sobre um mês                 → exercita a retomada
- *   5. `backfill` sobre o resto do período
+ *   1. `coletarOntem()`              → confira os números contra a HubSpot
+ *   2. `coletarOntem()` de novo      → tem que continuar 5 linhas, não 10
+ *   3. `rodarBackfill()` numa semana → 35 linhas
+ *   4. `rodarBackfill()` num mês     → exercita a retomada
+ *   5. `rodarBackfill()` no resto do período
+ *
+ * O intervalo do backfill vem das constantes BACKFILL_INICIO e BACKFILL_FIM:
+ * ajuste as duas, selecione `rodarBackfill` na lista de funções e execute.
  *
  * Cada etapa valida algo diferente. Fatiar assim faz um erro de mapeamento
  * aparecer em cinco linhas em vez de novecentas.
@@ -51,10 +54,11 @@
  *
  *   prepararPlanilha()          Cria as três abas. Seguro rodar quantas vezes quiser.
  *   coletarOntem()              Coleta o dia anterior nos canais configurados.
+ *   rodarBackfill()             Carga histórica do período em BACKFILL_INICIO/FIM.
  *   recoletarUltimosDias(n)     Regrava os últimos n dias (padrão 30).
- *   backfill(inicio, fim)       Carga histórica, com retomada automática.
- *   continuarBackfill()         Chamada pelo gatilho de retomada. Não chame à mão.
  *   cancelarBackfill()          Interrompe um backfill em andamento.
+ *   backfill(inicio, fim)       Como rodarBackfill, mas recebendo as datas.
+ *   continuarBackfill()         Chamada pelo gatilho de retomada. Não chame à mão.
  *
  * ----------------------------------------------------------------------------
  * TRÊS REGRAS QUE SUSTENTAM O DADO
@@ -116,6 +120,16 @@ var CANAIS = [
   { chave: 'brand', rotulo: 'Organic Search (Brand)' },
   { chave: 'ai_referrals', rotulo: 'Referências de IA' },
 ]
+
+/**
+ * Intervalo da carga histórica, usado por `rodarBackfill()`.
+ *
+ * O botão Executar do Apps Script não passa argumentos para a função, então o
+ * período da carga é configurado aqui. Ajuste as duas datas, selecione
+ * `rodarBackfill` na lista de funções e execute.
+ */
+var BACKFILL_INICIO = '2026-08-03'
+var BACKFILL_FIM = '2026-08-09'
 
 /** Linha de negócio consultada: `professional` ou `abroad`. */
 var LINHA = 'professional'
@@ -219,9 +233,21 @@ function recoletarUltimosDias(dias) {
 }
 
 /**
+ * Carga histórica do período configurado em BACKFILL_INICIO e BACKFILL_FIM.
+ *
+ * É esta que você seleciona e executa pelo editor: o botão Executar não passa
+ * argumentos, então o intervalo vem das constantes lá no topo.
+ */
+function rodarBackfill() {
+  Logger.log('Backfill de %s a %s.', BACKFILL_INICIO, BACKFILL_FIM)
+  backfill(BACKFILL_INICIO, BACKFILL_FIM)
+}
+
+/**
  * Carga histórica de um intervalo, com retomada automática.
  *
- * Exemplo: backfill('2026-03-01', '2026-08-11')
+ * Recebe as datas por argumento, então serve para chamar de outra função.
+ * Pelo editor, use `rodarBackfill()`.
  *
  * Se não couber numa execução, o script grava o progresso e agenda a
  * continuação sozinho. Acompanhe em Execuções.

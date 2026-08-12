@@ -108,16 +108,25 @@ que reexecutar qualquer intervalo é seguro.
 
 ### 4.3 Uma semana
 
-Rode `backfill('2026-08-03', '2026-08-09')` com as datas que você quiser.
+O botão _Executar_ do Apps Script não passa argumentos, então o intervalo da
+carga vem de duas constantes no topo do script:
+
+```js
+var BACKFILL_INICIO = '2026-08-03'
+var BACKFILL_FIM = '2026-08-09'
+```
+
+Ajuste as datas, salve, selecione **`rodarBackfill`** na lista de funções e
+execute.
 
 Confira o volume (7 dias × 5 canais = 35 linhas) e se algum dia ficou de fora.
 Nesta escala tudo cabe numa execução.
 
 ### 4.4 Um mês
 
-Rode `backfill` sobre um mês inteiro. Aqui a retomada provavelmente entra em
-ação: o script pausa perto dos 4,5 minutos, grava onde parou e agenda a
-continuação para um minuto depois.
+Mude as constantes para um mês inteiro e rode `rodarBackfill` de novo. Aqui a
+retomada provavelmente entra em ação: o script pausa perto dos 4,5 minutos,
+grava onde parou e agenda a continuação para um minuto depois.
 
 Acompanhe em _Execuções_. Você deve ver `backfill` seguido de uma ou mais
 `continuarBackfill`, e no log a mensagem de conclusão.
@@ -126,8 +135,8 @@ Se precisar interromper, rode `cancelarBackfill()`.
 
 ### 4.5 O resto do período
 
-Só depois que os quatro passos acima estiverem limpos. Pode rodar de uma vez —
-a retomada cuida do resto.
+Só depois que os quatro passos acima estiverem limpos. Ajuste as constantes
+para o período todo e rode uma vez — a retomada cuida do resto.
 
 ---
 
