@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     'out/**',
     'build/**',
     'next-env.d.ts',
+    // Material de referência externo, fora do versionamento.
+    'refs/**',
+    // Roda no editor do Apps Script, não neste projeto: outro runtime, outros globais.
+    'scripts/apps-script/**',
   ]),
 ])
 
