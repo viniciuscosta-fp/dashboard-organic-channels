@@ -121,9 +121,15 @@ export function isValidRange(range: DateRange): boolean {
   return spanInDays(range) <= MAX_PERIOD_DAYS
 }
 
-type SearchParamValue = string | string[] | undefined
+export type SearchParamValue = string | string[] | undefined
 
-function single(value: SearchParamValue): string | undefined {
+/**
+ * Primeiro valor de um parâmetro de URL.
+ *
+ * O Next entrega array quando a chave repete (`?metrica=a&metrica=b`). Ficar com
+ * o primeiro é arbitrário, mas é determinístico e não derruba a página.
+ */
+export function single(value: SearchParamValue): string | undefined {
   return Array.isArray(value) ? value[0] : value
 }
 
