@@ -1,9 +1,18 @@
 'use client'
 
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import {
+  Bar,
+  BarChart,
+  Cell,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 import type { StageDatum } from '@/lib/data/funnel-view'
-import { formatCount } from '@/lib/format'
+import { formatCount, formatOptionalRatio } from '@/lib/format'
 
 /** Cores da rampa ordinal, uma matiz só, na ordem das etapas do funil. */
 const STAGE_COLORS = ['var(--stage-1)', 'var(--stage-2)', 'var(--stage-3)']
@@ -13,10 +22,15 @@ interface FunnelStagesChartProps {
 }
 
 /**
- * Barras horizontais das etapas do funil.
+ * Barras horizontais das etapas do funil, com a razão entre etapas vizinhas.
  *
  * Barra horizontal e não vertical porque o rótulo de cada etapa é uma palavra
  * inteira — na vertical viraria texto rotacionado.
+ *
+ * A razão ao lado da barra é o que dá leitura ao gráfico: as três etapas vivem
+ * em ordens de grandeza diferentes, então as duas menores ficam achatadas e o
+ * comprimento relativo delas não é o que informa. `buildStageData` já calcula
+ * essa razão.
  */
 export function FunnelStagesChart({ stages }: FunnelStagesChartProps) {
   return (
@@ -26,7 +40,8 @@ export function FunnelStagesChart({ stages }: FunnelStagesChartProps) {
         <BarChart
           layout="vertical"
           data={stages}
-          margin={{ top: 4, right: 16, bottom: 4, left: 0 }}
+          // Folga à direita para o rótulo de razão da barra mais longa caber.
+          margin={{ top: 4, right: 72, bottom: 4, left: 0 }}
         >
           <XAxis type="number" hide />
           <YAxis
@@ -47,12 +62,29 @@ export function FunnelStagesChart({ stages }: FunnelStagesChartProps) {
               color: 'var(--ink)',
             }}
             labelStyle={{ color: 'var(--ink-secondary)', marginBottom: 2 }}
-            formatter={(value) => [formatCount(Number(value)), 'Total']}
+            formatter={(value, _name, item) => {
+              const conversion = (item?.payload as StageDatum | undefined)?.conversionFromPrevious
+              const total = formatCount(Number(value))
+
+              return conversion === null || conversion === undefined
+                ? [total, 'Total']
+                : [`${total} · ${formatOptionalRatio(conversion)} da etapa anterior`, 'Total']
+            }}
           />
           <Bar dataKey="value" barSize={26} radius={[0, 4, 4, 0]} isAnimationActive={false}>
             {stages.map((stage, index) => (
               <Cell key={stage.stage} fill={STAGE_COLORS[index]} />
             ))}
+            <LabelList
+              dataKey="conversionFromPrevious"
+              position="right"
+              offset={8}
+              fill="var(--ink-secondary)"
+              fontSize={11}
+              formatter={(value: unknown) =>
+                typeof value === 'number' ? formatOptionalRatio(value) : ''
+              }
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
