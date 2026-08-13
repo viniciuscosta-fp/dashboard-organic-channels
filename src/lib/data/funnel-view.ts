@@ -1,10 +1,13 @@
-import { monthOf, startOfWeek } from '../business-days'
+import { addDays, monthOf, startOfWeek } from '../business-days'
 import { formatDayMonth, formatMonth } from '../format'
 import type { DateRange } from '../period'
 import { listChannels } from './funnel-query'
+import { safeRatio } from './ratio'
 import {
+  CONVERSION_RATIO_DEFINITIONS,
   FUNNEL_STAGES,
   METRIC_LABELS,
+  type ConversionRatio,
   type FunnelSnapshot,
   type FunnelStage,
   type FunnelTotals,
@@ -52,7 +55,7 @@ export function buildStageData(totals: FunnelTotals): StageDatum[] {
       label: METRIC_LABELS[stage],
       value: totals[stage],
       conversionFromPrevious:
-        previousValue === undefined || previousValue === 0 ? null : totals[stage] / previousValue,
+        previousValue === undefined ? null : safeRatio(totals[stage], previousValue),
     }
   })
 }
@@ -122,4 +125,179 @@ export function buildTrendData(
       label: bucketLabel(date, granularity),
       channels: values,
     }))
+}
+
+/**
+ * Quantas semanas a tabela de conversão exibe.
+ *
+ * Com `ultimos-90-dias` seriam treze colunas, ilegíveis em qualquer largura de
+ * tela. Corta as mais antigas — e quem exibe **precisa dizer que cortou**, senão
+ * a tabela lê como cobertura completa do período.
+ */
+export const MAX_SEMANAS_EXIBIDAS = 8
+
+export interface ConversionWeek {
+  /** Segunda-feira que abre a semana, em ISO. */
+  date: string
+  /** Rótulo curto da coluna, ex.: `22/06`. */
+  label: string
+  /** Razão por canal na semana. `null` quando o denominador é zero. */
+  channels: Record<string, number | null>
+  /** Denominador por canal: a base que sustenta cada razão. */
+  bases: Record<string, number>
+  /** Razão consolidada da semana, sobre a soma — não a média das razões. */
+  total: number | null
+  /** Denominador consolidado da semana. */
+  totalBase: number
+  /** `true` quando a semana não terminou, ou terminou depois do último dado. */
+  partial: boolean
+}
+
+/**
+ * Razão entre etapas, semana a semana, por canal.
+ *
+ * **As semanas são completas, de segunda a domingo, e não recortadas pelo
+ * período.** Uma semana que começasse na quarta porque o período começa na
+ * quarta teria três dias de base e mostraria uma queda que é puro truncamento.
+ * Como a consulta já busca 21 dias corridos antes do período para a janela de
+ * tendência (`dataRangeFor`), a primeira semana se completa com dias anteriores
+ * ao recorte sem custo nenhum e sem uma segunda ida à fonte. Só a última semana
+ * pode ficar incompleta, e ela vem marcada com `partial`.
+ *
+ * A política de nulo aqui é o **inverso** de `buildTrendData`, de propósito: lá,
+ * intervalo sem linha vira zero, porque para volume o zero é a medição. Aqui,
+ * denominador zero vira `null`, porque para razão o zero é uma afirmação
+ * ("converteu nada") e ausência do que converter não é afirmação nenhuma. Não
+ * "conserte" isso para ficar igual.
+ */
+export function buildConversionWeeks(
+  snapshots: readonly FunnelSnapshot[],
+  ratio: ConversionRatio,
+  range: DateRange,
+  lastDataDate: string | null,
+  channels: readonly string[],
+  limit: number = MAX_SEMANAS_EXIBIDAS,
+): ConversionWeek[] {
+  if (lastDataDate === null) return []
+
+  // Semana futura não existe em fonte nenhuma, e semana depois do último dado
+  // só teria zeros. O fim é o que vier primeiro.
+  const end = lastDataDate < range.to ? lastDataDate : range.to
+  if (end < range.from) return []
+
+  const { numerator, denominator } = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const known = new Set(channels)
+
+  const weeks: ConversionWeek[] = []
+  const lastWeek = startOfWeek(end)
+
+  for (let week = startOfWeek(range.from); week <= lastWeek; week = addDays(week, 7)) {
+    const weekEnd = addDays(week, 6)
+
+    const numerators = new Map<string, number>()
+    const denominators = new Map<string, number>()
+
+    for (const snapshot of snapshots) {
+      if (snapshot.date < week || snapshot.date > weekEnd) continue
+      if (!known.has(snapshot.channel)) continue
+
+      numerators.set(
+        snapshot.channel,
+        (numerators.get(snapshot.channel) ?? 0) + snapshot[numerator],
+      )
+      denominators.set(
+        snapshot.channel,
+        (denominators.get(snapshot.channel) ?? 0) + snapshot[denominator],
+      )
+    }
+
+    let totalNumerator = 0
+    let totalDenominator = 0
+    const byChannel: Record<string, number | null> = {}
+    const bases: Record<string, number> = {}
+
+    for (const channel of channels) {
+      const channelNumerator = numerators.get(channel) ?? 0
+      const channelDenominator = denominators.get(channel) ?? 0
+
+      byChannel[channel] = safeRatio(channelNumerator, channelDenominator)
+      bases[channel] = channelDenominator
+
+      totalNumerator += channelNumerator
+      totalDenominator += channelDenominator
+    }
+
+    weeks.push({
+      date: week,
+      label: formatDayMonth(week),
+      channels: byChannel,
+      bases,
+      total: safeRatio(totalNumerator, totalDenominator),
+      totalBase: totalDenominator,
+      partial: weekEnd > end,
+    })
+  }
+
+  return weeks.length > limit ? weeks.slice(weeks.length - limit) : weeks
+}
+
+export interface ConversionWeekDelta {
+  /** Semana mais recente exibida. `null` quando não há duas semanas. */
+  current: string | null
+  /** Semana imediatamente anterior a ela. */
+  previous: string | null
+  /** Variação por canal, em pontos da razão. */
+  channels: Record<string, number | null>
+  /** Variação do consolidado. */
+  total: number | null
+  /** `true` quando a semana mais recente ainda não fechou. */
+  provisional: boolean
+}
+
+/**
+ * Variação da razão entre as duas últimas semanas exibidas.
+ *
+ * Compara as duas últimas **exibidas**, e não as duas últimas fechadas, para o
+ * número da coluna casar com o que está na tela ao lado dele. Quando a mais
+ * recente ainda não fechou, a variação sai marcada como provisória em vez de
+ * escondida: metade de uma semana já diz para que lado a coisa está indo, desde
+ * que quem lê saiba que é metade.
+ *
+ * Sem duas semanas não há variação — e isso é `null`, não zero.
+ */
+export function conversionWeekDeltas(weeks: readonly ConversionWeek[]): ConversionWeekDelta {
+  const current = weeks.at(-1)
+  const previous = weeks.at(-2)
+
+  if (!current || !previous) {
+    return {
+      current: current?.date ?? null,
+      previous: null,
+      channels: {},
+      total: null,
+      provisional: false,
+    }
+  }
+
+  const channels: Record<string, number | null> = {}
+  for (const channel of Object.keys(current.channels)) {
+    channels[channel] = safeDifference(current.channels[channel], previous.channels[channel])
+  }
+
+  return {
+    current: current.date,
+    previous: previous.date,
+    channels,
+    total: safeDifference(current.total, previous.total),
+    provisional: current.partial,
+  }
+}
+
+/** Diferença entre duas razões opcionais: falta de qualquer lado é `null`. */
+function safeDifference(
+  current: number | null,
+  previous: number | null | undefined,
+): number | null {
+  if (current === null || previous === null || previous === undefined) return null
+  return current - previous
 }
