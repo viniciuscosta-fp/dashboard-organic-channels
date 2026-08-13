@@ -6,6 +6,8 @@ import {
   formatCurrency,
   formatMetricValue,
   formatMonth,
+  formatOptionalRatio,
+  formatPoints,
   formatRate,
   formatSignedCount,
   formatSignedMetric,
@@ -80,6 +82,36 @@ describe('formatRate e formatCount', () => {
 
   it('formata contagem com separador de milhar', () => {
     expect(formatCount(1825)).toBe('1.825')
+  })
+})
+
+describe('formatOptionalRatio', () => {
+  it('devolve travessão quando não há razão', () => {
+    expect(formatOptionalRatio(null)).toBe('—')
+  })
+
+  it('formata razão zero como percentual, não como travessão', () => {
+    expect(formatOptionalRatio(0)).toBe('0,0%')
+  })
+})
+
+describe('formatPoints', () => {
+  it('mostra o sinal e a unidade em pontos percentuais', () => {
+    expect(semEspacos(formatPoints(0.024))).toBe('+2,4p.p.')
+    expect(semEspacos(formatPoints(-0.024))).toBe('−2,4p.p.')
+  })
+
+  it('não põe sinal em zero', () => {
+    expect(semEspacos(formatPoints(0))).toBe('0p.p.')
+  })
+
+  it('usa o sinal de menos, não o hífen', () => {
+    expect(formatPoints(-0.024)).toContain('−')
+    expect(formatPoints(-0.024)).not.toContain('-')
+  })
+
+  it('arredonda para uma casa antes de decidir o sinal', () => {
+    expect(semEspacos(formatPoints(0.0002))).toBe('0p.p.')
   })
 })
 

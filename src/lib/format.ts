@@ -1,3 +1,4 @@
+import { safeRatio } from './data/ratio'
 import { isCurrencyMetric, type Metric } from './data/types'
 
 const integerFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
@@ -19,6 +20,12 @@ const compactFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits:
 
 const percentFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+
+/** Pontos percentuais: uma casa fixa, e o sinal é aplicado à mão. */
+const pointsFormatter = new Intl.NumberFormat('pt-BR', {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 })
@@ -98,12 +105,41 @@ export function formatRatio(ratio: number): string {
 }
 
 /**
+ * Formata uma razão que pode não existir. `null` vira travessão.
+ *
+ * É o par de exibição de `safeRatio`: quem calcula devolve `null` para "não há
+ * razão", e quem exibe transforma isso num travessão em vez de `NaN%` ou de um
+ * `0%` que afirmaria algo que ninguém mediu.
+ */
+export function formatOptionalRatio(ratio: number | null): string {
+  return ratio === null ? '—' : formatRatio(ratio)
+}
+
+/**
  * Formata uma divisão como percentual. Divisor zero vira travessão em vez de
  * `NaN%` — mês sem MQL é um estado válido, não um erro.
  */
 export function formatRate(numerator: number, denominator: number): string {
-  if (denominator === 0) return '—'
-  return formatRatio(numerator / denominator)
+  return formatOptionalRatio(safeRatio(numerator, denominator))
+}
+
+/**
+ * Diferença entre duas razões, em pontos percentuais.
+ *
+ * Pontos percentuais e não variação relativa: `26% → 24%` é `−2,0 p.p.`, e
+ * chamar isso de `−7,7%` é a forma clássica de inflar um movimento pequeno.
+ *
+ * Usa o mesmo `−` (U+2212) de `formatSignedCount`, pela razão registrada ali:
+ * hífen e sinal de menos se confundem numa coluna numérica.
+ */
+export function formatPoints(delta: number): string {
+  const points = delta * 100
+  const rounded = Math.round(points * 10) / 10
+
+  if (rounded === 0) return '0 p.p.'
+
+  const sign = rounded > 0 ? '+' : '−'
+  return `${sign}${pointsFormatter.format(Math.abs(rounded))} p.p.`
 }
 
 /**

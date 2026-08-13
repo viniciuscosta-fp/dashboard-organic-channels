@@ -38,6 +38,69 @@ export function isCurrencyMetric(metric: Metric): boolean {
 }
 
 /**
+ * Razões entre etapas do funil.
+ *
+ * **Não são conversões de coorte.** O modelo conta eventos por dia — MQLs
+ * criados no dia, oportunidades criadas no dia — sem vínculo entre um MQL e a
+ * oportunidade que ele virou. `Σoportunidades / Σmqls` é a razão entre dois
+ * fluxos medidos na mesma janela, o que é coisa diferente da probabilidade de um
+ * MQL virar oportunidade. Daí o nome `ratio` em vez de `conversionRate`, e os
+ * rótulos dizendo "no período". Ver `docs/decisions/0005`.
+ *
+ * A ordem do array é a ordem em que aparecem na tela.
+ */
+export const CONVERSION_RATIOS = [
+  'mql-to-opportunity',
+  'opportunity-to-customer',
+  'mql-to-customer',
+] as const
+
+export type ConversionRatio = (typeof CONVERSION_RATIOS)[number]
+
+export function isConversionRatio(value: unknown): value is ConversionRatio {
+  return typeof value === 'string' && (CONVERSION_RATIOS as readonly string[]).includes(value)
+}
+
+export interface ConversionRatioDefinition {
+  numerator: FunnelStage
+  denominator: FunnelStage
+  /** Nome completo, para título e legenda. */
+  label: string
+  /** Versão curta, para aba e cabeçalho de coluna. */
+  shortLabel: string
+}
+
+/**
+ * O par de métricas de cada razão.
+ *
+ * `mql-to-customer` é `customers / mqls` **direto**, e não o produto das duas
+ * etapas anteriores. Algebricamente daria no mesmo enquanto houver oportunidade,
+ * mas o dado real permite `opportunities = 0` com `customers > 0` — defasagem de
+ * registro, ou cliente fechado sem oportunidade cadastrada. Nesse caso o produto
+ * é indefinido e a divisão direta continua válida.
+ */
+export const CONVERSION_RATIO_DEFINITIONS: Record<ConversionRatio, ConversionRatioDefinition> = {
+  'mql-to-opportunity': {
+    numerator: 'opportunities',
+    denominator: 'mqls',
+    label: 'MQL → Oportunidade',
+    shortLabel: 'MQL→Opp',
+  },
+  'opportunity-to-customer': {
+    numerator: 'customers',
+    denominator: 'opportunities',
+    label: 'Oportunidade → Cliente',
+    shortLabel: 'Opp→Cli',
+  },
+  'mql-to-customer': {
+    numerator: 'customers',
+    denominator: 'mqls',
+    label: 'MQL → Cliente',
+    shortLabel: 'MQL→Cli',
+  },
+}
+
+/**
  * Um dia de um canal: as quatro métricas daquele dia.
  *
  * Contém apenas números agregados. Dados em nível de lead (nome, e-mail,
