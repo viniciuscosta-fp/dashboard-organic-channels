@@ -426,6 +426,136 @@ describe('computeAdherence', () => {
 
       expect(curve.every((point) => point.projected === null)).toBe(true)
     })
+
+    it('sem canal em foco, a curva é a do consolidado', () => {
+      expect(report(1, '2026-08-14').burnupChannel).toBeNull()
+    })
+  })
+
+  describe('burn-up com canal em foco', () => {
+    const doisCanais = {
+      snapshots: [
+        ...daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),
+        ...daily('2026-08-01', '2026-08-14', 'direct', { customers: 3 }),
+      ],
+      goals: [...goals, goal('2026-08', 'direct', 42)],
+      range: AGOSTO,
+    }
+
+    it('a curva passa a ser do canal, não do consolidado', () => {
+      const { burnup, burnupChannel } = computeAdherence({
+        ...doisCanais,
+        focusChannel: 'direct',
+      })
+
+      expect(burnupChannel).toBe('direct')
+      expect(burnup.customers[9].actual).toBe(30)
+      expect(burnup.customers.at(-1)!.goal).toBe(42)
+    })
+
+    it('a curva do canal não diverge do cartão de KPI do mesmo canal', () => {
+      const relatorio = computeAdherence({ ...doisCanais, focusChannel: 'direct' })
+      const cartao = customers(relatorio.byChannel.find((e) => e.channel === 'direct')!)
+
+      const ultimoComDado = relatorio.burnup.customers.findLast((p) => p.actual !== null)!
+
+      expect(ultimoComDado.actual).toBe(cartao.actual)
+      expect(relatorio.burnup.customers.at(-1)!.goal).toBeCloseTo(cartao.goalPeriod)
+      expect(relatorio.burnup.customers.at(-1)!.projected).toBeCloseTo(cartao.projection!)
+    })
+
+    it('o rateio da meta dos demais canais não muda quando um canal é focado', () => {
+      const consolidado = computeAdherence(doisCanais)
+      const focado = computeAdherence({ ...doisCanais, focusChannel: 'direct' })
+
+      expect(customers(focado.total)).toEqual(customers(consolidado.total))
+      expect(focado.byChannel).toEqual(consolidado.byChannel)
+    })
+
+    it('a curva sobe pelo ritmo do canal focado, não pelo do consolidado', () => {
+      const relatorio = computeAdherence({ ...doisCanais, focusChannel: 'direct' })
+      const curva = relatorio.burnup.customers
+
+      const ancora = curva.findLastIndex((point) => point.actual !== null)
+      const passo = curva[ancora + 1].projected! - curva[ancora].projected!
+
+      // `direct` faz 3 por dia útil; o consolidado faz 4.
+      expect(passo).toBeCloseTo(3)
+      expect(customers(relatorio.total).recentDailyRate).toBeCloseTo(4)
+    })
+
+    it('canal focado sem histórico suficiente fica sem projeção na curva', () => {
+      const { burnup } = computeAdherence({
+        snapshots: [
+          ...daily('2026-08-01', '2026-08-05', 'organic-search', { customers: 1 }),
+          ...daily('2026-08-01', '2026-08-05', 'direct', { customers: 3 }),
+        ],
+        goals: [...goals, goal('2026-08', 'direct', 42)],
+        range: AGOSTO,
+        focusChannel: 'direct',
+      })
+
+      expect(burnup.customers.every((point) => point.projected === null)).toBe(true)
+    })
+
+    it('canal parado dentro da janela tem o ritmo puxado pelos dias zerados', () => {
+      // Dia útil sem linha é um dia de resultado zero, não um dia que não
+      // existiu — a curva do canal precisa refletir isso.
+      const relatorio = computeAdherence({
+        snapshots: [
+          ...daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),
+          ...daily('2026-08-01', '2026-08-05', 'direct', { customers: 3 }),
+        ],
+        goals: [...goals, goal('2026-08', 'direct', 42)],
+        range: AGOSTO,
+        focusChannel: 'direct',
+      })
+
+      // 9 clientes em três dias, sobre uma janela de dez dias úteis.
+      expect(
+        customers(relatorio.byChannel.find((e) => e.channel === 'direct')!).recentDailyRate,
+      ).toBeCloseTo(0.9)
+    })
+
+    it('canal em foco desconhecido cai no consolidado, em vez de esvaziar a curva', () => {
+      const { burnup, burnupChannel } = computeAdherence({
+        ...doisCanais,
+        focusChannel: 'canal_que_nao_existe',
+      })
+
+      expect(burnupChannel).toBeNull()
+      expect(burnup.customers[9].actual).toBe(40)
+    })
+  })
+
+  it('canal cadastrado, sem dado e sem meta, aparece zerado', () => {
+    const { byChannel } = computeAdherence({
+      snapshots: daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),
+      goals,
+      range: AGOSTO,
+      channels: ['organic-search', 'recem_cadastrado'],
+    })
+
+    const novo = byChannel.find((entry) => entry.channel === 'recem_cadastrado')
+
+    expect(novo).toBeDefined()
+    expect(customers(novo!).actual).toBe(0)
+    expect(customers(novo!).status).toBe('sem-meta')
+  })
+
+  it('o cadastro não substitui os canais derivados do dado e das metas', () => {
+    const { byChannel } = computeAdherence({
+      snapshots: daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),
+      goals: [...goals, goal('2026-08', 'canal_fora_do_cadastro', 5)],
+      range: AGOSTO,
+      channels: ['recem_cadastrado'],
+    })
+
+    expect(byChannel.map((entry) => entry.channel)).toEqual([
+      'canal_fora_do_cadastro',
+      'organic-search',
+      'recem_cadastrado',
+    ])
   })
 
   it('o consolidado soma os canais', () => {

@@ -133,8 +133,13 @@ export interface AdherenceReport {
   /** Consolidado de todos os canais. */
   total: ChannelAdherence
   byChannel: ChannelAdherence[]
-  /** Curva acumulada do consolidado, por métrica. */
+  /**
+   * Curva acumulada por métrica, no escopo pedido em `focusChannel` — o
+   * consolidado quando não há canal em foco.
+   */
   burnup: Record<Metric, BurnupPoint[]>
+  /** Canal a que a curva se refere. `null` quando ela é do consolidado. */
+  burnupChannel: string | null
   /** União dos meses sem meta, em qualquer canal ou métrica. */
   missingGoalMonths: IsoMonth[]
 }
@@ -423,9 +428,30 @@ export interface AdherenceInput {
   snapshots: readonly FunnelSnapshot[]
   goals: readonly MonthlyGoal[]
   range: DateRange
+  /**
+   * Canais conhecidos além dos que aparecem no dado e nas metas — na prática, o
+   * cadastro da aba `canais`. São **unidos** aos derivados, nunca os
+   * substituem: um canal cadastrado, sem dado e sem meta ainda precisa aparecer
+   * zerado, e um canal com meta não pode sumir por não estar no cadastro.
+   */
+  channels?: readonly string[]
+  /**
+   * Canal ao qual a curva de burn-up se refere. Ausente devolve o consolidado.
+   *
+   * Só a curva muda: `total` e `byChannel` saem sempre completos, e o conjunto
+   * de canais que rateia a meta **não** é afetado. Focar um canal é escolher o
+   * que a curva mostra, não recortar o universo do cálculo.
+   */
+  focusChannel?: string | null
 }
 
-export function computeAdherence({ snapshots, goals, range }: AdherenceInput): AdherenceReport {
+export function computeAdherence({
+  snapshots,
+  goals,
+  range,
+  channels: knownChannels,
+  focusChannel = null,
+}: AdherenceInput): AdherenceReport {
   const inPeriod = snapshots.filter(
     (snapshot) => snapshot.date >= range.from && snapshot.date <= range.to,
   )
@@ -433,10 +459,15 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
   const timing = computeTiming(range, lastDataDate(inPeriod), firstDataDate(snapshots))
   const index = indexGoals(goals)
 
-  // Canais conhecidos vêm do dado **e** das metas: um canal com meta e sem
-  // nenhum resultado no período precisa aparecer, justamente por estar zerado.
+  // Canais conhecidos vêm do dado, das metas **e** do cadastro: um canal com
+  // meta e sem nenhum resultado no período precisa aparecer, justamente por
+  // estar zerado — e o mesmo vale para um canal recém-cadastrado.
   const channels = [
-    ...new Set([...listChannels(inPeriod), ...goals.map((goal) => goal.channel)]),
+    ...new Set([
+      ...listChannels(inPeriod),
+      ...goals.map((goal) => goal.channel),
+      ...(knownChannels ?? []),
+    ]),
   ].sort()
 
   const total: ChannelAdherence = {
@@ -473,13 +504,26 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
     ),
   ].sort()
 
+  // A curva sai do **mesmo** `ChannelAdherence` que alimenta os cartões de KPI.
+  // Recalcular o ritmo aqui seria a forma mais fácil de a curva e o número
+  // acima dela passarem a discordar.
+  const focus =
+    focusChannel === null
+      ? null
+      : (byChannel.find((entry) => entry.channel === focusChannel) ?? null)
+
+  const burnupSnapshots = focus
+    ? inPeriod.filter((snapshot) => snapshot.channel === focus.channel)
+    : inPeriod
+  const burnupChannels = focus ? [focus.channel] : channels
+
   const burnup = Object.fromEntries(
-    total.metrics.map((metric) => [
+    (focus ?? total).metrics.map((metric) => [
       metric.metric,
       buildBurnup(
-        inPeriod,
+        burnupSnapshots,
         index,
-        channels,
+        burnupChannels,
         metric.metric,
         timing,
         metric.projection === null ? null : metric.recentDailyRate,
@@ -487,5 +531,12 @@ export function computeAdherence({ snapshots, goals, range }: AdherenceInput): A
     ]),
   ) as Record<Metric, BurnupPoint[]>
 
-  return { timing, total, byChannel, burnup, missingGoalMonths }
+  return {
+    timing,
+    total,
+    byChannel,
+    burnup,
+    burnupChannel: focus?.channel ?? null,
+    missingGoalMonths,
+  }
 }
