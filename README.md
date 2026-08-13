@@ -1,12 +1,33 @@
 # Dashboard de Canais Orgânicos
 
-Aderência à meta de MQLs, oportunidades e clientes por canal de origem. Os dados
-vêm do HubSpot, passam por um flow do n8n e chegam ao dashboard através de uma
-planilha do Google.
+Aderência à meta de receita, MQLs, oportunidades e clientes por canal de origem.
+Os dados vêm do HubSpot, passam por um webhook do n8n e chegam ao dashboard
+através de uma planilha do Google.
 
 Além dos números realizados, o dashboard mostra a meta rateada para o período
 selecionado, o gap contra o ritmo esperado e onde o período fecha mantendo a
 tendência recente do canal.
+
+## Estado
+
+_Atualizado em 13 de agosto de 2026._
+
+Funcional de ponta a ponta com dado real:
+
+- A coleta diária alimenta a planilha e o histórico cobre **fevereiro a agosto
+  de 2026**
+- As metas de **agosto de 2026** estão preenchidas para os cinco canais nas
+  quatro métricas
+- `npm run verify` verde
+
+**Único item em aberto: hospedagem.** A Vercel foi descartada por restrições de
+compliance e nenhuma alternativa foi escolhida, então o dashboard roda apenas
+localmente. Como não há autenticação no código, proteção de acesso e hospedagem
+são a mesma decisão — ver
+[`docs/decisions/0002`](docs/decisions/0002-sem-auth-no-codigo-v1.md).
+
+Mantenha esta seção honesta: ela é o que uma pessoa (ou um agente) lê primeiro
+para saber o que já está pronto.
 
 ## Rodando localmente
 

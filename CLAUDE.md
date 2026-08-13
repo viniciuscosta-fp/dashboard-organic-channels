@@ -105,6 +105,12 @@ Quem escreve é `scripts/apps-script/coleta-diaria.js`, que roda na planilha e
 consulta o webhook de métricas por canal. Ele grava por **upsert**: dia e canal
 repetidos derrubam a leitura do dashboard, porque somariam em silêncio.
 
+**Esse arquivo não sincroniza com a planilha.** O que executa é a cópia colada
+no editor do Apps Script, na conta Google. Editar aqui não muda a coleta: é
+preciso avisar que a versão nova precisa ser colada lá, e que a `WEBHOOK_URL` no
+topo tem de ser preenchida de novo a cada colagem — o arquivo versionado carrega
+só um marcador, porque o endpoint é interno.
+
 Duas armadilhas já resolvidas, que não devem regredir: a API do Sheets é lida
 com `UNFORMATTED_VALUE` (o padrão devolveria `"1.825"` para 1825, lido como
 1,825), e a coluna `date` é texto simples (como data, voltaria número serial).
