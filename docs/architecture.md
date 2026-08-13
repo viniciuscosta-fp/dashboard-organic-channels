@@ -52,15 +52,20 @@ sem rede.
 
 ## Camadas
 
-| Camada       | Arquivos                                                 | Regra                                           |
-| ------------ | -------------------------------------------------------- | ----------------------------------------------- |
-| Contrato     | `funnel-repository.ts`, `goal-repository.ts`, `types.ts` | Sem I/O, sem dependência de fornecedor          |
-| Parsing      | `sheets-parser.ts`, `goals-parser.ts`, `sheet-table.ts`  | Função pura, testável sem rede                  |
-| Acesso       | `sheets-*-repository.ts`, `mock-*-repository.ts`         | Autenticação e rede; sem cache                  |
-| Serviço      | `funnel-service.ts`                                      | Factories e cache; único ponto de entrada da UI |
-| Inteligência | `goal-math.ts`, `business-days.ts`, `period.ts`          | Funções puras; recebem `hoje` como argumento    |
-| Visualização | `funnel-view.ts`, `format.ts`                            | Funções puras que preparam dados para tela      |
-| Apresentação | `src/components/**`                                      | Recebe props prontas; nunca busca dado          |
+| Camada       | Arquivos                                                               | Regra                                           |
+| ------------ | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| Contrato     | `funnel-repository.ts`, `goal-repository.ts`, `types.ts`               | Sem I/O, sem dependência de fornecedor          |
+| Parsing      | `sheets-parser.ts`, `goals-parser.ts`, `sheet-table.ts`                | Função pura, testável sem rede                  |
+| Acesso       | `sheets-*-repository.ts`, `mock-*-repository.ts`                       | Autenticação e rede; sem cache                  |
+| Serviço      | `funnel-service.ts`                                                    | Factories e cache; único ponto de entrada da UI |
+| Inteligência | `goal-math.ts`, `funnel-efficiency.ts`, `ratio.ts`, `business-days.ts` | Funções puras; recebem `hoje` como argumento    |
+| Visualização | `funnel-view.ts`, `format.ts`, `series-colors.ts`                      | Funções puras que preparam dados para tela      |
+| URL          | `period.ts`, `dashboard-params.ts`                                     | Traduzem `searchParams` em estado, e de volta   |
+| Apresentação | `src/components/**`                                                    | Recebe props prontas; nunca busca dado          |
+
+`ratio.ts` é folha de propósito — sem nenhum import — para ser usado tanto pela
+inteligência quanto pela visualização sem inverter a ordem das camadas. É a
+única casa da política "denominador zero é `null`, nunca zero".
 
 A separação entre parsing e acesso existe para que a lógica que mais quebra —
 interpretar o que veio de fora — seja testável sem credencial e sem rede. O
@@ -97,14 +102,59 @@ o resumo operacional:
 O `AdherenceReport` sai pronto para a tela: totais, por canal, e a curva de
 burn-up com realizado, meta acumulada e continuação estimada.
 
-## Período
+## Razões entre etapas
 
-O período vem da URL (`?periodo=` ou `?de=&ate=`) e é resolvido por
-`parsePeriod`. Entrada inválida cai no preset padrão em vez de derrubar a
-página — um link colado errado não pode quebrar o dashboard de quem abriu.
+`funnel-efficiency.ts` compara a razão entre etapas de cada canal com a razão
+que a meta pressupõe; `buildConversionWeeks` quebra a mesma razão em semanas
+completas. O detalhe importante é o que essas razões **não** são: com dado de
+evento por dia e sem vínculo entre um MQL e a oportunidade que ele virou, o que
+existe é razão entre dois fluxos na mesma janela, não conversão de coorte. As
+consequências disso, e as demais decisões da feature, estão em
+[`decisions/0005`](decisions/0005-razoes-de-fluxo-e-conversao-implicita.md).
 
-O seletor não usa JavaScript: presets são links e o intervalo personalizado é um
-formulário `GET`. Todo período fica compartilhável por URL.
+As semanas se completam com dias anteriores ao período usando o histórico que
+`dataRangeFor` já busca para a janela de tendência — sem segunda ida à fonte e
+sem chave de cache nova.
+
+## Foco em um canal
+
+`?canal=` põe um canal em foco. O foco **escopa os agregados** — os quatro
+cartões, a curva acumulada e o funil — e **não escopa as comparações**: as
+tabelas por canal e o gráfico de evolução seguem completos, com o canal em
+destaque. Filtrar uma tabela de comparação para uma linha só destrói o que a
+torna útil.
+
+Duas consequências que não podem regredir, ambas em
+[`decisions/0006`](decisions/0006-foco-em-um-canal.md): a curva de burn-up sai do
+**mesmo** `ChannelAdherence` que alimenta os cartões, para não haver dois ritmos
+na mesma tela; e o filtro é aplicado com `applyFunnelQuery` **depois** da busca,
+nunca no argumento de `getFunnelSnapshots`, que fragmentaria a chave de cache por
+canal.
+
+Como o escopo muda o significado de metade da tela, todo card nomeia o próprio
+escopo no `hint`, e `ScopeNotice` diz em uma frase o que mudou e o que não mudou.
+
+## Estado na URL
+
+São quatro eixos independentes: período (`?periodo=` ou `?de=&ate=`), métrica do
+burn-up (`?metrica=`), transição do funil (`?taxa=`) e canal em foco (`?canal=`).
+`parsePeriod` é a autoridade sobre o primeiro; `parseDashboardParams` compõe
+todos.
+
+Cada controle governa um eixo e recebe `baseQuery` com os demais, montado por
+`dashboardSearchParams`. É isso que impede um controle de resetar em silêncio a
+escolha feita em outro — a regressão mais fácil de introduzir aqui e mais difícil
+de notar.
+
+O canal é validado em dois tempos: `parseDashboardParams` devolve a chave crua, e
+`resolveChannelParam` a reconcilia contra o catálogo na rota, porque a lista de
+canais válidos vem do dado, que só é buscado depois.
+
+Entrada inválida cai no padrão em vez de derrubar a página — um link colado
+errado não pode quebrar o dashboard de quem abriu.
+
+Nenhum controle usa JavaScript: presets e abas são links, e o intervalo
+personalizado é um formulário `GET`. Todo estado fica compartilhável por URL.
 
 ## Cache
 
@@ -155,8 +205,14 @@ request e não durante o build.
 
 ## O que ainda não existe
 
-- Filtro por canal na interface (`FunnelQuery` já suporta; falta UI)
+- Comparação com o período anterior equivalente
+- Decomposição do gap em volume contra eficiência de conversão
+- Ticket médio e receita por MQL — bloqueados por uma pergunta de contrato: o
+  `data-contract.md` não diz se a receita do dia D pertence aos clientes
+  contados no dia D
 - Rota de revalidação sob demanda para o n8n chamar após escrever
 - Feriados nacionais na contagem de dias úteis
 - Fontes de GA4, GSC e Semrush
-- Autenticação no código — hoje a proteção é da Vercel
+- Autenticação no código — a proteção depende de onde o dashboard for hospedado,
+  decisão ainda em aberto; ver
+  [`decisions/0002`](decisions/0002-sem-auth-no-codigo-v1.md)

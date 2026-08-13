@@ -6,7 +6,8 @@ através de uma planilha do Google.
 
 Além dos números realizados, o dashboard mostra a meta rateada para o período
 selecionado, o gap contra o ritmo esperado e onde o período fecha mantendo a
-tendência recente do canal.
+tendência recente do canal. Mostra também **como cada canal converte entre as
+etapas do funil**, semana a semana, contra a conversão que a meta pressupõe.
 
 ## Estado
 
@@ -19,6 +20,27 @@ Funcional de ponta a ponta com dado real:
 - As metas de **agosto de 2026** estão preenchidas para os cinco canais nas
   quatro métricas
 - `npm run verify` verde
+
+**V2, fatia 1 — taxas de conversão (entregue).** Card "Taxas de conversão" com
+uma linha por canal e uma coluna por semana, abas para as três transições
+(MQL → Oportunidade, Oportunidade → Cliente, MQL → Cliente), a conversão
+implícita na meta como referência e a variação em pontos percentuais contra a
+semana anterior. O gráfico de etapas passou a exibir a razão entre etapas, que
+já era calculada e descartada. Nada disso mudou a planilha, o intervalo buscado
+ou a chave de cache — é derivação sobre os dados que já existiam. As premissas e
+os limites do que essas razões medem estão em
+[`docs/decisions/0005`](docs/decisions/0005-razoes-de-fluxo-e-conversao-implicita.md);
+o principal é que são **razões de fluxo, não conversão de coorte**.
+
+**V2, fatia 2 — foco em um canal (entregue).** Pílulas de canal ao lado do
+seletor de período. Com um canal em foco, os quatro cartões, a curva acumulada e
+o funil passam a ser dele; as tabelas por canal e o gráfico de evolução seguem
+completos, com o canal em destaque, porque é comparando que a escolha faz
+sentido. Cada card diz de quem são os números que mostra. Ver
+[`docs/decisions/0006`](docs/decisions/0006-foco-em-um-canal.md).
+
+Próximas fatias, ainda não começadas: comparação com o período anterior;
+decomposição do gap em volume contra eficiência; ticket médio e receita por MQL.
 
 **Único item em aberto: hospedagem.** A Vercel foi descartada por restrições de
 compliance e nenhuma alternativa foi escolhida, então o dashboard roda apenas
