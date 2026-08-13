@@ -13,20 +13,7 @@ import {
 import { SeriesLegend } from '@/components/molecules/series-legend'
 import type { TrendDatum } from '@/lib/data/funnel-view'
 import { formatCount } from '@/lib/format'
-
-/**
- * Slots categóricos, atribuídos por posição fixa e nunca reciclados.
- *
- * A cor segue o canal, não a sua posição no ranking: filtrar um canal não
- * pode repintar os que sobraram.
- */
-const SERIES_COLORS = [
-  'var(--series-1)',
-  'var(--series-2)',
-  'var(--series-3)',
-  'var(--series-4)',
-  'var(--series-5)',
-]
+import { seriesColorOf } from '@/lib/series-colors'
 
 interface ChannelTrendChartProps {
   trend: TrendDatum[]
@@ -34,16 +21,31 @@ interface ChannelTrendChartProps {
   channels: string[]
   /** Chave do canal para o nome exibido. */
   labels: Record<string, string>
+  /**
+   * Canal em foco. O gráfico continua mostrando todos — comparar é o motivo de
+   * ele existir —, e o canal em foco ganha traço mais grosso.
+   */
+  highlight?: string | null
 }
 
-export function ChannelTrendChart({ trend, channels, labels }: ChannelTrendChartProps) {
+export function ChannelTrendChart({
+  trend,
+  channels,
+  labels,
+  highlight = null,
+}: ChannelTrendChartProps) {
   // Recharts precisa de linhas planas; o modelo de visualização guarda os
   // canais aninhados para não colidir com `date` e `label`.
   const data = trend.map((point) => ({ label: point.label, ...point.channels }))
 
-  const legend = channels.map((channel, index) => ({
-    label: labels[channel] ?? channel,
-    color: SERIES_COLORS[index % SERIES_COLORS.length],
+  // A opacidade sozinha é pista visual, e identidade de série não pode depender
+  // disso: o sufixo na legenda é o que sustenta a leitura.
+  const legend = channels.map((channel) => ({
+    label:
+      channel === highlight
+        ? `${labels[channel] ?? channel} (em foco)`
+        : (labels[channel] ?? channel),
+    color: seriesColorOf(channels, channel),
   }))
 
   return (
@@ -76,19 +78,24 @@ export function ChannelTrendChart({ trend, channels, labels }: ChannelTrendChart
               labelStyle={{ color: 'var(--ink-secondary)', marginBottom: 4 }}
               formatter={(value) => formatCount(Number(value))}
             />
-            {channels.map((channel, index) => (
-              <Line
-                key={channel}
-                name={labels[channel] ?? channel}
-                type="monotone"
-                dataKey={channel}
-                stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)' }}
-                isAnimationActive={false}
-              />
-            ))}
+            {channels.map((channel) => {
+              const focused = channel === highlight
+
+              return (
+                <Line
+                  key={channel}
+                  name={labels[channel] ?? channel}
+                  type="monotone"
+                  dataKey={channel}
+                  stroke={seriesColorOf(channels, channel)}
+                  strokeWidth={focused ? 3 : 2}
+                  strokeOpacity={highlight === null || focused ? 1 : 0.35}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)' }}
+                  isAnimationActive={false}
+                />
+              )
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>

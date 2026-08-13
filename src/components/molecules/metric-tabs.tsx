@@ -4,12 +4,15 @@ import { METRICS, METRIC_LABELS, type Metric } from '@/lib/data/types'
 
 interface MetricTabsProps {
   current: Metric
-  /** Parâmetros do período em uso, preservados ao trocar de métrica. */
-  periodQuery: Record<string, string>
+  /**
+   * Parâmetros dos outros eixos do dashboard, preservados ao trocar de métrica.
+   * Vem de `dashboardSearchParams(params, ['metrica'])`.
+   */
+  baseQuery: Record<string, string>
 }
 
 /** Escolhe qual métrica o gráfico acumulado mostra. */
-export function MetricTabs({ current, periodQuery }: MetricTabsProps) {
+export function MetricTabs({ current, baseQuery }: MetricTabsProps) {
   return (
     <nav aria-label="Métrica">
       <ul className="flex flex-wrap gap-1.5">
@@ -19,7 +22,7 @@ export function MetricTabs({ current, periodQuery }: MetricTabsProps) {
           return (
             <li key={metric}>
               <Link
-                href={{ pathname: '/', query: { ...periodQuery, metrica: metric } }}
+                href={{ pathname: '/', query: { ...baseQuery, metrica: metric } }}
                 aria-current={active ? 'page' : undefined}
                 className={
                   active

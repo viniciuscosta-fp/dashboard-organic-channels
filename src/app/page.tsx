@@ -2,28 +2,45 @@ import { connection } from 'next/server'
 import { Suspense } from 'react'
 
 import { Card, CardTitle } from '@/components/atoms/card'
+import { ChannelPicker } from '@/components/molecules/channel-picker'
 import { GoalKpiCard } from '@/components/molecules/goal-kpi-card'
 import { MetricTabs } from '@/components/molecules/metric-tabs'
 import { PeriodPicker } from '@/components/molecules/period-picker'
 import { PeriodSummary } from '@/components/molecules/period-summary'
+import { RatioTabs } from '@/components/molecules/ratio-tabs'
+import { ScopeNotice } from '@/components/molecules/scope-notice'
 import { BurnupChart } from '@/components/organisms/burnup-chart'
+import { ChannelConversionTable } from '@/components/organisms/channel-conversion-table'
 import { ChannelGoalTable } from '@/components/organisms/channel-goal-table'
 import { ChannelTrendChart } from '@/components/organisms/channel-trend-chart'
 import { DataError } from '@/components/organisms/data-error'
 import { FunnelStagesChart } from '@/components/organisms/funnel-stages-chart'
 import { DashboardShell } from '@/components/templates/dashboard-shell'
+import {
+  dashboardSearchParams,
+  parseDashboardParams,
+  resolveChannelParam,
+} from '@/lib/dashboard-params'
 import { resolveChannels } from '@/lib/data/channel-catalog'
-import { listChannels, sumMetrics } from '@/lib/data/funnel-query'
+import { computeConversionMatrix } from '@/lib/data/funnel-efficiency'
+import { applyFunnelQuery, listChannels, sumMetrics } from '@/lib/data/funnel-query'
 import {
   getChannels,
   getFunnelSnapshots,
   getFunnelSource,
   getGoals,
 } from '@/lib/data/funnel-service'
-import { buildStageData, buildTrendData, trendGranularity } from '@/lib/data/funnel-view'
+import {
+  buildConversionWeeks,
+  buildStageData,
+  buildTrendData,
+  conversionWeekDeltas,
+  MAX_SEMANAS_EXIBIDAS,
+  trendGranularity,
+} from '@/lib/data/funnel-view'
 import { computeAdherence, dataRangeFor } from '@/lib/data/goal-math'
-import { isMetric, METRIC_LABELS, type Metric } from '@/lib/data/types'
-import { parsePeriod, periodSearchParams, todayInBusinessTimezone } from '@/lib/period'
+import { CONVERSION_RATIO_DEFINITIONS } from '@/lib/data/types'
+import { todayInBusinessTimezone } from '@/lib/period'
 
 export default function Page({ searchParams }: PageProps<'/'>) {
   return (
@@ -52,9 +69,8 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
   const today = todayInBusinessTimezone()
   const params = await searchParams
 
-  const { range, presetId } = parsePeriod(params, today)
-  const metric: Metric = isMetric(params.metrica) ? params.metrica : 'revenue'
-  const periodQuery = periodSearchParams(presetId ?? range)
+  const parsed = parseDashboardParams(params, today)
+  const { range, presetId, metric, ratio } = parsed
 
   let snapshots
   let goals
@@ -71,7 +87,6 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
     return <DataError message={error instanceof Error ? error.message : String(error)} />
   }
 
-  const report = computeAdherence({ snapshots, goals, range })
   const inPeriod = snapshots.filter(
     (snapshot) => snapshot.date >= range.from && snapshot.date <= range.to,
   )
@@ -82,20 +97,72 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
     catalog.channels.map((entry) => [entry.channel, entry.label]),
   )
 
+  // A validação do canal só fecha aqui: a lista de canais válidos vem do dado,
+  // que o parser da URL ainda não tinha.
+  const channel = resolveChannelParam(parsed.channel, channelOrder)
+  const dashboard = { ...parsed, channel }
+  const channelLabel = channel === null ? null : (channelLabels[channel] ?? channel)
+
+  const report = computeAdherence({
+    snapshots,
+    goals,
+    range,
+    channels: channelOrder,
+    focusChannel: channel,
+  })
+
   // A tabela segue a ordem do cadastro, não a ordem alfabética do cálculo.
   const byChannel = [...report.byChannel].sort(
     (a, b) => channelOrder.indexOf(a.channel) - channelOrder.indexOf(b.channel),
   )
 
+  // O escopo muda os agregados do topo, nunca as tabelas de comparação: filtrar
+  // uma tabela de comparação para uma linha só destrói o que a torna útil.
+  const scope =
+    channel === null
+      ? report.total
+      : (byChannel.find((entry) => entry.channel === channel) ?? report.total)
+  const scopedSnapshots =
+    channel === null ? inPeriod : applyFunnelQuery(inPeriod, { channels: [channel] })
+
+  const conversion = computeConversionMatrix({
+    periodSnapshots: inPeriod,
+    goals,
+    channels: channelOrder,
+    timing: report.timing,
+  })
+
+  // As semanas saem do conjunto largo, não do recorte: é o que permite a
+  // primeira semana se completar com os dias anteriores ao período em vez de
+  // aparecer truncada.
+  const weeks = buildConversionWeeks(
+    snapshots,
+    ratio,
+    range,
+    report.timing.lastDataDate,
+    channelOrder,
+  )
+
   return (
     <>
       <div className="space-y-3">
-        <PeriodPicker current={presetId} range={range} metric={metric} />
+        <PeriodPicker
+          current={presetId}
+          range={range}
+          baseQuery={dashboardSearchParams(dashboard, ['periodo'])}
+        />
+        <ChannelPicker
+          channels={catalog.channels}
+          current={channel}
+          baseQuery={dashboardSearchParams(dashboard, ['canal'])}
+          order={channelOrder}
+        />
         <PeriodSummary
           timing={report.timing}
           missingGoalMonths={report.missingGoalMonths}
           unregisteredChannels={catalog.unregistered}
         />
+        <ScopeNotice channelLabel={channelLabel} />
       </div>
 
       {inPeriod.length === 0 ? (
@@ -103,17 +170,22 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {report.total.metrics.map((adherence) => (
+            {scope.metrics.map((adherence) => (
               <GoalKpiCard key={adherence.metric} adherence={adherence} />
             ))}
           </div>
 
           <Card>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <CardTitle hint="Acumulado no período contra a meta, com a continuação no ritmo atual">
+              <CardTitle
+                hint={`${scopeHint(channelLabel)} · acumulado no período contra a meta, com a continuação no ritmo atual`}
+              >
                 Aderência acumulada
               </CardTitle>
-              <MetricTabs current={metric} periodQuery={periodQuery} />
+              <MetricTabs
+                current={metric}
+                baseQuery={dashboardSearchParams(dashboard, ['metrica'])}
+              />
             </div>
 
             <BurnupChart
@@ -125,29 +197,61 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
-              <CardTitle hint="Total acumulado no período, por etapa">Etapas do funil</CardTitle>
-              <FunnelStagesChart stages={buildStageData(sumMetrics(inPeriod))} />
+              <CardTitle
+                hint={`${scopeHint(channelLabel)} · total acumulado no período, por etapa`}
+              >
+                Etapas do funil
+              </CardTitle>
+              <FunnelStagesChart stages={buildStageData(sumMetrics(scopedSnapshots))} />
             </Card>
 
             <Card>
-              <CardTitle hint={`MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}, por canal`}>
+              <CardTitle
+                hint={`Todos os canais · MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}`}
+              >
                 Evolução por canal
               </CardTitle>
               <ChannelTrendChart
                 trend={buildTrendData(inPeriod, trendGranularity(range))}
                 channels={channelOrder}
                 labels={channelLabels}
+                highlight={channel}
               />
             </Card>
           </div>
 
           <Card>
-            <CardTitle
-              hint={`Meta rateada por dias úteis · destaque em ${METRIC_LABELS[metric].toLowerCase()}`}
-            >
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <CardTitle
+                hint={`Todos os canais · ${CONVERSION_RATIO_DEFINITIONS[ratio].label} · semanas completas de segunda a domingo, até ${MAX_SEMANAS_EXIBIDAS} mais recentes`}
+              >
+                Taxas de conversão
+              </CardTitle>
+              <RatioTabs current={ratio} baseQuery={dashboardSearchParams(dashboard, ['taxa'])} />
+            </div>
+
+            <ChannelConversionTable
+              ratio={ratio}
+              rows={conversion.byChannel}
+              total={conversion.total}
+              weeks={weeks}
+              delta={conversionWeekDeltas(weeks)}
+              order={channelOrder}
+              labels={channelLabels}
+              highlight={channel}
+            />
+          </Card>
+
+          <Card>
+            <CardTitle hint="Todos os canais · meta rateada por dias úteis">
               Aderência por canal
             </CardTitle>
-            <ChannelGoalTable channels={byChannel} catalog={catalog} order={channelOrder} />
+            <ChannelGoalTable
+              channels={byChannel}
+              catalog={catalog}
+              order={channelOrder}
+              highlight={channel}
+            />
           </Card>
         </>
       )}
@@ -161,10 +265,22 @@ const GRANULARITY_LABEL = {
   mensal: 'mês',
 } as const
 
+/**
+ * Primeiro pedaço do `hint` de um card, nomeando o escopo.
+ *
+ * Todo card diz de quem são os números que mostra. É a regra que impede o
+ * filtro de canal de criar um dashboard em que metade dos blocos mudou de
+ * significado e a outra metade não, sem nada na tela dizendo qual é qual.
+ */
+function scopeHint(channelLabel: string | null): string {
+  return channelLabel ?? 'Todos os canais'
+}
+
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse space-y-6" aria-hidden>
       <div className="bg-surface ring-hairline h-10 rounded-xl ring-1" />
+      <div className="bg-surface ring-hairline h-8 rounded-xl ring-1" />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
           <div key={index} className="bg-surface ring-hairline h-40 rounded-xl ring-1" />
@@ -175,6 +291,7 @@ function DashboardSkeleton() {
         <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
         <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
       </div>
+      <div className="bg-surface ring-hairline h-64 rounded-xl ring-1" />
     </div>
   )
 }
