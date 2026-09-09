@@ -1,4 +1,5 @@
 import type { PeriodTiming } from '@/lib/data/goal-math'
+import type { PeriodComparison } from '@/lib/data/period-comparison'
 import { formatLongDay, formatRatio } from '@/lib/format'
 
 interface PeriodSummaryProps {
@@ -7,6 +8,8 @@ interface PeriodSummaryProps {
   missingGoalMonths: string[]
   /** Canais que apareceram no funil sem estar na aba de cadastro. */
   unregisteredChannels: string[]
+  /** Comparação com o período anterior, para dizer contra o que se compara. */
+  comparison?: PeriodComparison | null
 }
 
 /**
@@ -20,6 +23,7 @@ export function PeriodSummary({
   timing,
   missingGoalMonths,
   unregisteredChannels,
+  comparison = null,
 }: PeriodSummaryProps) {
   const { lastDataDate, businessDaysElapsed, businessDaysTotal, elapsedRatio } = timing
 
@@ -40,6 +44,23 @@ export function PeriodSummary({
       <span>
         {businessDaysElapsed} de {businessDaysTotal} dias úteis ({formatRatio(elapsedRatio)})
       </span>
+
+      {comparison?.previousRange ? (
+        <>
+          <span aria-hidden>·</span>
+          <span>
+            comparado com {formatLongDay(comparison.previousRange.from)} a{' '}
+            {formatLongDay(comparison.previousRange.to)}
+          </span>
+        </>
+      ) : null}
+
+      {comparison?.unavailable === 'historico-insuficiente' ? (
+        <span className="text-ink-secondary">
+          <span aria-hidden>⚠ </span>
+          sem histórico anterior suficiente para comparar
+        </span>
+      ) : null}
 
       {missingGoalMonths.length > 0 ? (
         <span className="text-ink-secondary">

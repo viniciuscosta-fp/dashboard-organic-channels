@@ -4,6 +4,7 @@ import {
   addDays,
   businessDaysByMonth,
   businessDaysInMonth,
+  calendarSpanForBusinessDays,
   countBusinessDays,
   isBusinessDay,
   isIsoDate,
@@ -157,5 +158,25 @@ describe('businessDaysByMonth', () => {
     const soma = [...businessDaysByMonth(from, to).values()].reduce((a, b) => a + b, 0)
 
     expect(soma).toBe(countBusinessDays(from, to))
+  })
+})
+
+describe('calendarSpanForBusinessDays', () => {
+  it('cobre a quantidade pedida a partir de qualquer dia da semana', () => {
+    // Propriedade, não exemplo: para toda âncora e todo tamanho, recuar o span
+    // devolvido precisa alcançar pelo menos os dias úteis pedidos.
+    const ancoras = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07']
+
+    for (const ancora of ancoras) {
+      for (let uteis = 1; uteis <= 60; uteis += 1) {
+        const span = calendarSpanForBusinessDays(uteis)
+        expect(countBusinessDays(addDays(ancora, -span), ancora)).toBeGreaterThanOrEqual(uteis)
+      }
+    }
+  })
+
+  it('não recua nada quando não há dias úteis a cobrir', () => {
+    expect(calendarSpanForBusinessDays(0)).toBe(0)
+    expect(calendarSpanForBusinessDays(-3)).toBe(0)
   })
 })

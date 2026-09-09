@@ -1,4 +1,4 @@
-import { addDays, isIsoDate, monthBounds, monthOf } from './business-days'
+import { addDays, isIsoDate, lastBusinessDaysUpTo, monthBounds, monthOf } from './business-days'
 
 export interface DateRange {
   /** Primeiro dia do período, inclusivo. ISO `AAAA-MM-DD`. */
@@ -155,6 +155,27 @@ export function parsePeriod(
   const presetId = preset && isPresetId(preset) ? preset : DEFAULT_PRESET
 
   return { range: resolvePreset(presetId, today), presetId }
+}
+
+/**
+ * Os `businessDays` dias úteis imediatamente anteriores a `from`.
+ *
+ * `null` quando não há dias úteis a comparar. O intervalo devolvido é contíguo e
+ * atravessa virada de mês e de ano sem se interromper — a operação não recomeça
+ * porque o calendário virou.
+ *
+ * Ressalva a conhecer: igual número de dias úteis **não** é igual composição de
+ * dias da semana. Com dez (duas semanas cheias) é; com sete, a janela anterior
+ * tem uma terça a mais e uma sexta a menos. É o mesmo tradeoff que
+ * `JANELA_TENDENCIA_DIAS_UTEIS` já assume por ser múltiplo de cinco.
+ */
+export function previousComparableRange(from: string, businessDays: number): DateRange | null {
+  if (businessDays <= 0) return null
+
+  const days = lastBusinessDaysUpTo(addDays(from, -1), businessDays)
+  if (days.length < businessDays) return null
+
+  return { from: days[0], to: days[days.length - 1] }
 }
 
 /** Parâmetros de URL que reproduzem um período — usado pelos links do seletor. */

@@ -3,23 +3,31 @@ import { listChannels, sumMetrics } from './funnel-query'
 import { indexGoals, prorateGoal, type GoalIndex, type PeriodTiming } from './goal-math'
 import { ratioDelta, safeRatio } from './ratio'
 import {
-  CONVERSION_RATIO_DEFINITIONS,
   CONVERSION_RATIOS,
-  type ConversionRatio,
+  FUNNEL_RATIO_DEFINITIONS,
+  VALUE_RATIOS,
+  type FunnelRatio,
   type FunnelSnapshot,
   type FunnelTotals,
   type MonthlyGoal,
+  type RatioUnit,
 } from './types'
 
 /**
- * Razões entre etapas do funil, por canal, contra a razão que a meta pressupõe.
+ * Razões do funil, por canal, contra a razão que a meta pressupõe.
+ *
+ * São duas naturezas com a mesma matemática: **conversão** entre etapas e
+ * **valor** por unidade. Um caminho de código só serve as duas, e é isso que
+ * garante que ticket médio e conversão nunca divirjam de política de nulo, de
+ * janela de rateio ou de tratamento de meta ausente.
  *
  * Tudo aqui é função pura, como em `goal-math.ts`, e pelo mesmo motivo: nenhuma
  * leitura de relógio, de rede ou de ambiente. O que este arquivo acrescenta é
  * uma pergunta diferente — `goal-math.ts` compara **volume** contra meta ao
- * longo do tempo; aqui a comparação é de **razão entre etapas**.
+ * longo do tempo; aqui a comparação é de **razão**.
  *
- * Ver `docs/decisions/0005` para o que estas razões medem e o que não medem.
+ * Ver `docs/decisions/0005` para o que as conversões medem e o que não medem, e
+ * `docs/decisions/0007` para o que autoriza as razões de valor.
  */
 
 /**
@@ -44,6 +52,20 @@ export const BASE_MINIMA_CONVERSAO = 30
  */
 export const BASE_MINIMA_SEMANAL = 10
 
+/**
+ * O mesmo, para razões de valor.
+ *
+ * Ticket médio sobre um ou dois clientes não é média: é um contrato. O limiar é
+ * muito menor que o das conversões porque a base aqui são clientes fechados, e
+ * um canal saudável fecha dezenas por mês, não centenas.
+ */
+export const BASE_MINIMA_VALOR = 5
+
+/** Limiar de base por natureza da razão. */
+function minimumBase(unit: RatioUnit): number {
+  return unit === 'valor' ? BASE_MINIMA_VALOR : BASE_MINIMA_CONVERSAO
+}
+
 export type BenchmarkGap =
   /** Nenhum mês da janela tem meta da métrica do numerador. */
   | 'sem-meta-numerador'
@@ -55,7 +77,7 @@ export type BenchmarkGap =
   | 'cobertura-parcial-de-canais'
 
 export interface RatioComparison {
-  ratio: ConversionRatio
+  ratio: FunnelRatio
   /** Razão realizada na janela. `null` quando o denominador é zero. */
   actual: number | null
   /** Denominador realizado: o tamanho da base que sustenta `actual`. */
@@ -72,21 +94,21 @@ export interface RatioComparison {
   excludedChannels: string[]
 }
 
-export interface ChannelConversion {
+export interface ChannelRatios {
   /** Chave do canal, ou `'total'` no consolidado — convenção de `ChannelAdherence`. */
   channel: string
   totals: FunnelTotals
-  ratios: Record<ConversionRatio, RatioComparison>
+  ratios: Record<FunnelRatio, RatioComparison>
 }
 
-export interface ConversionMatrix {
-  total: ChannelConversion
-  byChannel: ChannelConversion[]
+export interface RatioMatrix {
+  total: ChannelRatios
+  byChannel: ChannelRatios[]
 }
 
 /** Razão realizada de um par de etapas. `null` quando o denominador é zero. */
-export function ratioOf(totals: FunnelTotals, ratio: ConversionRatio): number | null {
-  const { numerator, denominator } = CONVERSION_RATIO_DEFINITIONS[ratio]
+export function ratioOf(totals: FunnelTotals, ratio: FunnelRatio): number | null {
+  const { numerator, denominator } = FUNNEL_RATIO_DEFINITIONS[ratio]
   return safeRatio(totals[numerator], totals[denominator])
 }
 
@@ -169,10 +191,10 @@ function reasonFor(
 function goalPairFor(
   goals: GoalIndex,
   channels: readonly string[],
-  ratio: ConversionRatio,
+  ratio: FunnelRatio,
   days: Map<IsoMonth, number>,
 ): GoalPair {
-  const definition = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const definition = FUNNEL_RATIO_DEFINITIONS[ratio]
   const months = days.size
 
   let numerator = 0
@@ -225,13 +247,13 @@ function goalPairFor(
  * chamador. Ver `benchmarkDays`.
  */
 export function buildRatioComparison(
-  ratio: ConversionRatio,
+  ratio: FunnelRatio,
   totals: FunnelTotals,
   goals: GoalIndex,
   channels: readonly string[],
   timing: PeriodTiming,
 ): RatioComparison {
-  const definition = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const definition = FUNNEL_RATIO_DEFINITIONS[ratio]
 
   const base = totals[definition.denominator]
   const actual = safeRatio(totals[definition.numerator], base)
@@ -243,7 +265,7 @@ export function buildRatioComparison(
     ratio,
     actual,
     base,
-    thin: actual !== null && base < BASE_MINIMA_CONVERSAO,
+    thin: actual !== null && base < minimumBase(definition.unit),
     benchmark,
     benchmarkGap: pair.gap,
     delta: ratioDelta(actual, benchmark),
@@ -251,26 +273,26 @@ export function buildRatioComparison(
   }
 }
 
-function buildChannelConversion(
+function buildChannelRatios(
   snapshots: readonly FunnelSnapshot[],
   goals: GoalIndex,
   channels: readonly string[],
   channel: string,
   timing: PeriodTiming,
-): ChannelConversion {
+): ChannelRatios {
   const totals = sumMetrics(snapshots)
 
   const ratios = Object.fromEntries(
-    CONVERSION_RATIOS.map((ratio) => [
+    [...CONVERSION_RATIOS, ...VALUE_RATIOS].map((ratio) => [
       ratio,
       buildRatioComparison(ratio, totals, goals, channels, timing),
     ]),
-  ) as Record<ConversionRatio, RatioComparison>
+  ) as Record<FunnelRatio, RatioComparison>
 
   return { channel, totals, ratios }
 }
 
-export interface ConversionMatrixInput {
+export interface RatioMatrixInput {
   /** Snapshots **já recortados no período** — o mesmo `inPeriod` da rota. */
   periodSnapshots: readonly FunnelSnapshot[]
   goals: readonly MonthlyGoal[]
@@ -280,19 +302,19 @@ export interface ConversionMatrixInput {
 }
 
 /**
- * Matriz completa: consolidado e por canal, as três razões.
+ * Matriz completa: consolidado e por canal, as cinco razões.
  *
  * O consolidado é a razão das **somas**, nunca a média das razões dos canais. A
  * razão das somas é uma média ponderada por volume; a média simples inverte a
  * leitura quando os volumes são desiguais — um canal pequeno com razão alta
  * puxaria o consolidado para cima como se pesasse o mesmo que o maior.
  */
-export function computeConversionMatrix({
+export function computeRatioMatrix({
   periodSnapshots,
   goals,
   channels,
   timing,
-}: ConversionMatrixInput): ConversionMatrix {
+}: RatioMatrixInput): RatioMatrix {
   const index = indexGoals(goals)
 
   // Canais conhecidos vêm do dado **e** das metas, como em `computeAdherence`:
@@ -302,10 +324,10 @@ export function computeConversionMatrix({
     ? [...channels]
     : [...new Set([...listChannels(periodSnapshots), ...goals.map((goal) => goal.channel)])].sort()
 
-  const total = buildChannelConversion(periodSnapshots, index, known, 'total', timing)
+  const total = buildChannelRatios(periodSnapshots, index, known, 'total', timing)
 
   const byChannel = known.map((channel) =>
-    buildChannelConversion(
+    buildChannelRatios(
       periodSnapshots.filter((snapshot) => snapshot.channel === channel),
       index,
       [channel],

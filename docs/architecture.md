@@ -52,16 +52,16 @@ sem rede.
 
 ## Camadas
 
-| Camada       | Arquivos                                                               | Regra                                           |
-| ------------ | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| Contrato     | `funnel-repository.ts`, `goal-repository.ts`, `types.ts`               | Sem I/O, sem dependência de fornecedor          |
-| Parsing      | `sheets-parser.ts`, `goals-parser.ts`, `sheet-table.ts`                | Função pura, testável sem rede                  |
-| Acesso       | `sheets-*-repository.ts`, `mock-*-repository.ts`                       | Autenticação e rede; sem cache                  |
-| Serviço      | `funnel-service.ts`                                                    | Factories e cache; único ponto de entrada da UI |
-| Inteligência | `goal-math.ts`, `funnel-efficiency.ts`, `ratio.ts`, `business-days.ts` | Funções puras; recebem `hoje` como argumento    |
-| Visualização | `funnel-view.ts`, `format.ts`, `series-colors.ts`                      | Funções puras que preparam dados para tela      |
-| URL          | `period.ts`, `dashboard-params.ts`                                     | Traduzem `searchParams` em estado, e de volta   |
-| Apresentação | `src/components/**`                                                    | Recebe props prontas; nunca busca dado          |
+| Camada       | Arquivos                                                                                       | Regra                                           |
+| ------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Contrato     | `funnel-repository.ts`, `goal-repository.ts`, `types.ts`                                       | Sem I/O, sem dependência de fornecedor          |
+| Parsing      | `sheets-parser.ts`, `goals-parser.ts`, `sheet-table.ts`                                        | Função pura, testável sem rede                  |
+| Acesso       | `sheets-*-repository.ts`, `mock-*-repository.ts`                                               | Autenticação e rede; sem cache                  |
+| Serviço      | `funnel-service.ts`                                                                            | Factories e cache; único ponto de entrada da UI |
+| Inteligência | `goal-math.ts`, `funnel-efficiency.ts`, `period-comparison.ts`, `ratio.ts`, `business-days.ts` | Funções puras; recebem `hoje` como argumento    |
+| Visualização | `funnel-view.ts`, `format.ts`, `series-colors.ts`                                              | Funções puras que preparam dados para tela      |
+| URL          | `period.ts`, `dashboard-params.ts`                                                             | Traduzem `searchParams` em estado, e de volta   |
+| Apresentação | `src/components/**`                                                                            | Recebe props prontas; nunca busca dado          |
 
 `ratio.ts` é folha de propósito — sem nenhum import — para ser usado tanto pela
 inteligência quanto pela visualização sem inverter a ordem das camadas. É a
@@ -94,27 +94,55 @@ o resumo operacional:
 - **Âncora.** O decorrido é medido contra a última data com dado, não contra o
   calendário.
 - **Ritmo.** Média por dia útil nos últimos 10 dias úteis, com a janela
-  atravessando o início do período — por isso a consulta busca 21 dias corridos
-  a mais que o recorte (`dataRangeFor`).
+  atravessando o início do período — por isso `dataRangeFor` recua 21 dias
+  corridos além do recorte. A rota busca ainda mais que isso, por causa da
+  comparação com o período anterior; ver a seção adiante.
 - **Confiança.** Sem histórico, não projeta. Com pouco do período decorrido,
   projeta com aviso. Período fechado mostra o resultado final.
 
 O `AdherenceReport` sai pronto para a tela: totais, por canal, e a curva de
 burn-up com realizado, meta acumulada e continuação estimada.
 
-## Razões entre etapas
+## Razões do funil
 
-`funnel-efficiency.ts` compara a razão entre etapas de cada canal com a razão
-que a meta pressupõe; `buildConversionWeeks` quebra a mesma razão em semanas
-completas. O detalhe importante é o que essas razões **não** são: com dado de
-evento por dia e sem vínculo entre um MQL e a oportunidade que ele virou, o que
-existe é razão entre dois fluxos na mesma janela, não conversão de coorte. As
-consequências disso, e as demais decisões da feature, estão em
+`funnel-efficiency.ts` compara cada razão de um canal com a razão que a meta
+pressupõe. São duas naturezas com a mesma matemática — **conversão** entre etapas
+e **valor** por unidade (ticket médio, receita por MQL) —, e um caminho de código
+só serve as duas: é o que garante que elas nunca divirjam de política de nulo, de
+janela de rateio ou de tratamento de meta ausente. `buildConversionWeeks` quebra
+só as conversões em semanas completas.
+
+O detalhe importante é o que essas razões **não** são: com dado de evento por dia
+e sem vínculo entre um MQL e a oportunidade que ele virou, o que existe é razão
+entre dois fluxos na mesma janela, não conversão de coorte. As consequências
+disso estão em
 [`decisions/0005`](decisions/0005-razoes-de-fluxo-e-conversao-implicita.md).
+
+As razões de valor só são legítimas porque a receita de um dia pertence aos
+clientes contados naquele dia — ver
+[`decisions/0007`](decisions/0007-receita-pertence-aos-clientes-do-dia.md). Daí
+sai também a identidade `receita por MQL = ticket médio × conversão de MQL para
+cliente`, que separa contrato menor de conversão pior.
 
 As semanas se completam com dias anteriores ao período usando o histórico que
 `dataRangeFor` já busca para a janela de tendência — sem segunda ida à fonte e
 sem chave de cache nova.
+
+## Comparação com o período anterior
+
+`period-comparison.ts` compara a janela **realizada** do recorte com os mesmos
+dias úteis imediatamente anteriores. Realizada, e não o recorte inteiro: num mês
+com 8 de 21 dias úteis decorridos, comparar contra 21 dias faria todo canal
+aparecer despencando, todo começo de mês.
+
+O intervalo buscado é estendido por `dataRangeWithComparisonFor`, que é
+determinístico — depende só do recorte e de hoje, nunca do dado. É o que mantém
+uma chave de cache e uma ida à fonte. Um teste de invariância garante que o
+intervalo mais largo não altera nenhum número do `AdherenceReport`.
+
+Sem histórico anterior suficiente, a comparação é recusada com motivo visível na
+régua, em vez de calculada contra zeros. Ver
+[`decisions/0008`](decisions/0008-comparacao-com-o-periodo-anterior.md).
 
 ## Foco em um canal
 
@@ -205,11 +233,7 @@ request e não durante o build.
 
 ## O que ainda não existe
 
-- Comparação com o período anterior equivalente
 - Decomposição do gap em volume contra eficiência de conversão
-- Ticket médio e receita por MQL — bloqueados por uma pergunta de contrato: o
-  `data-contract.md` não diz se a receita do dia D pertence aos clientes
-  contados no dia D
 - Rota de revalidação sob demanda para o n8n chamar após escrever
 - Feriados nacionais na contagem de dias úteis
 - Fontes de GA4, GSC e Semrush

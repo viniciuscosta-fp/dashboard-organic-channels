@@ -2,8 +2,9 @@ import { StatusBadge } from '@/components/molecules/status-badge'
 import type { ChannelCatalog } from '@/lib/data/channel-catalog'
 import { labelOf } from '@/lib/data/channel-catalog'
 import type { ChannelAdherence } from '@/lib/data/goal-math'
-import { METRIC_LABELS } from '@/lib/data/types'
-import { formatMetricValue, formatRatio, formatSignedMetric } from '@/lib/format'
+import { findMetricComparison, type PeriodComparison } from '@/lib/data/period-comparison'
+import { METRIC_LABELS, type Metric } from '@/lib/data/types'
+import { formatMetricValue, formatRatio, formatSignedMetric, formatSignedRatio } from '@/lib/format'
 import { seriesColorOf } from '@/lib/series-colors'
 
 interface ChannelGoalTableProps {
@@ -13,6 +14,11 @@ interface ChannelGoalTableProps {
   order: string[]
   /** Canal em foco. A tabela segue completa; a linha dele é que se destaca. */
   highlight?: string | null
+  /**
+   * Comparação com o período anterior. Ausente ou indisponível esconde a coluna
+   * inteira, em vez de encher a tabela de travessões.
+   */
+  comparison?: PeriodComparison | null
 }
 
 /**
@@ -26,10 +32,13 @@ export function ChannelGoalTable({
   catalog,
   order,
   highlight = null,
+  comparison = null,
 }: ChannelGoalTableProps) {
+  const showsComparison = comparison !== null && comparison.unavailable === null
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[48rem] text-sm">
+      <table className={`w-full text-sm ${showsComparison ? 'min-w-[54rem]' : 'min-w-[48rem]'}`}>
         <thead>
           <tr className="text-ink-muted border-hairline border-b text-xs">
             <th scope="col" className="py-2 pr-3 text-left font-medium">
@@ -50,6 +59,11 @@ export function ChannelGoalTable({
             <th scope="col" className="py-2 pr-3 text-right font-medium">
               Projeção
             </th>
+            {showsComparison ? (
+              <th scope="col" className="py-2 pr-3 text-right font-medium">
+                vs. anterior
+              </th>
+            ) : null}
             <th scope="col" className="py-2 text-left font-medium">
               Status
             </th>
@@ -117,6 +131,14 @@ export function ChannelGoalTable({
                       </span>
                     )}
                   </td>
+                  {showsComparison ? (
+                    <ComparisonCell
+                      comparison={comparison}
+                      channel={entry.channel}
+                      metric={metric.metric}
+                    />
+                  ) : null}
+
                   <td className="py-2.5">
                     <StatusBadge status={metric.status} size="sm" />
                   </td>
@@ -127,5 +149,33 @@ export function ChannelGoalTable({
         })}
       </table>
     </div>
+  )
+}
+
+interface ComparisonCellProps {
+  comparison: PeriodComparison
+  channel: string
+  metric: Metric
+}
+
+/** Variação contra a janela equivalente anterior, em valor absoluto e relativo. */
+function ComparisonCell({ comparison, channel, metric }: ComparisonCellProps) {
+  const entry = findMetricComparison(comparison, channel, metric)
+
+  return (
+    <td className="text-ink py-2.5 pr-3 text-right">
+      {entry === null ? (
+        '—'
+      ) : (
+        <>
+          {formatSignedMetric(metric, entry.delta)}
+          {entry.relative === null ? (
+            ''
+          ) : (
+            <span className="text-ink-muted"> · {formatSignedRatio(entry.relative)}</span>
+          )}
+        </>
+      )}
+    </td>
   )
 }

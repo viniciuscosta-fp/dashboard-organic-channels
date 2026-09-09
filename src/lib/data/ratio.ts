@@ -33,3 +33,16 @@ export function ratioDelta(actual: number | null, benchmark: number | null): num
   if (actual === null || benchmark === null) return null
   return actual - benchmark
 }
+
+/**
+ * Variação relativa entre dois valores: `(atual − anterior) / anterior`.
+ *
+ * `null` quando a base anterior é zero, **nunca `1` nem infinito**. Um canal que
+ * saiu de zero para oito clientes teve variação absoluta de `+8`; a variação
+ * relativa dele é indefinida, e "+800%" seria uma invenção. O mesmo vale para
+ * dois zeros: não houve variação de nada.
+ */
+export function relativeChange(current: number, previous: number): number | null {
+  if (previous === 0) return null
+  return (current - previous) / previous
+}

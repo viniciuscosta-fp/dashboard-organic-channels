@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { listBusinessDays } from '../business-days'
+import { countBusinessDays, listBusinessDays, MAX_DIAS_INTERVALO } from '../business-days'
+import { MAX_PERIOD_DAYS, PERIOD_PRESET_IDS, resolvePreset } from '../period'
 import {
   classifyStatus,
   computeAdherence,
   computeTiming,
+  dataRangeFor,
+  dataRangeWithComparisonFor,
   indexGoals,
   JANELA_TENDENCIA_DIAS_UTEIS,
   lastDataDate,
@@ -571,5 +574,185 @@ describe('computeAdherence', () => {
     expect(customers(total).actual).toBe(40)
     expect(customers(total).goalPeriod).toBe(63)
     expect(byChannel.map((entry) => entry.channel)).toEqual(['direct', 'organic-search'])
+  })
+})
+
+describe('dataRangeWithComparisonFor', () => {
+  const HOJE = '2026-08-14'
+
+  it('recua o suficiente para a pior janela anterior caber', () => {
+    const range = resolvePreset('mes-atual', HOJE)
+    const largo = dataRangeWithComparisonFor(range, HOJE)
+
+    // A janela anterior nunca passa dos dias úteis do período inteiro.
+    const uteisDoPeriodo = countBusinessDays(range.from, range.to)
+
+    expect(countBusinessDays(largo.from, range.from)).toBeGreaterThan(uteisDoPeriodo)
+  })
+
+  it('cobre todos os presets', () => {
+    for (const preset of PERIOD_PRESET_IDS) {
+      const range = resolvePreset(preset, HOJE)
+      const largo = dataRangeWithComparisonFor(range, HOJE)
+
+      expect(countBusinessDays(largo.from, range.from)).toBeGreaterThan(
+        countBusinessDays(range.from, range.to),
+      )
+    }
+  })
+
+  it('não pede dado futuro', () => {
+    const range = resolvePreset('mes-atual', HOJE)
+
+    expect(dataRangeWithComparisonFor(range, HOJE).to).toBe(HOJE)
+  })
+
+  it('o pior caso continua abaixo do teto de iteração', () => {
+    // Sem isto, subir MAX_PERIOD_DAYS passaria a truncar a série em silêncio.
+    const range = { from: '2026-01-01', to: addDiasCorridos('2026-01-01', MAX_PERIOD_DAYS - 1) }
+    const largo = dataRangeWithComparisonFor(range, '2027-12-31')
+
+    expect(diasCorridos(largo.from, largo.to)).toBeLessThan(MAX_DIAS_INTERVALO)
+  })
+
+  it('o relatório de aderência é idêntico com o intervalo largo', () => {
+    // O intervalo maior existe só para a comparação: não pode mexer em nenhum
+    // número que já estava na tela.
+    const goals = [goal('2026-08', 'organic-search', 21)]
+    const todos = daily('2026-05-01', '2026-08-14', 'organic-search', { customers: 1 })
+
+    const estreito = todos.filter((s) => s.date >= dataRangeFor(AGOSTO, '2026-08-14').from)
+    const largo = todos.filter(
+      (s) => s.date >= dataRangeWithComparisonFor(AGOSTO, '2026-08-14').from,
+    )
+
+    expect(largo.length).toBeGreaterThan(estreito.length)
+    expect(computeAdherence({ snapshots: largo, goals, range: AGOSTO })).toEqual(
+      computeAdherence({ snapshots: estreito, goals, range: AGOSTO }),
+    )
+  })
+})
+
+function addDiasCorridos(iso: string, dias: number): string {
+  const date = new Date(`${iso}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + dias)
+  return date.toISOString().slice(0, 10)
+}
+
+function diasCorridos(from: string, to: string): number {
+  const inicio = new Date(`${from}T00:00:00Z`).getTime()
+  const fim = new Date(`${to}T00:00:00Z`).getTime()
+  return Math.round((fim - inicio) / 86_400_000) + 1
+}
+
+describe('burn-up com registro de fim de semana', () => {
+  /** Gera uma linha por dia **corrido**, inclusive sábado e domingo. */
+  function everyDay(
+    from: string,
+    to: string,
+    channel: string,
+    perDay: Partial<FunnelTotals> = {},
+  ): FunnelSnapshot[] {
+    const rows: FunnelSnapshot[] = []
+    let date = from
+
+    while (date <= to) {
+      rows.push({
+        date,
+        channel,
+        revenue: perDay.revenue ?? 0,
+        mqls: perDay.mqls ?? 0,
+        opportunities: perDay.opportunities ?? 0,
+        customers: perDay.customers ?? 0,
+      })
+      date = addDiasCorridos(date, 1)
+    }
+
+    return rows
+  }
+
+  const goals = [goal('2026-08', 'organic-search', 21)]
+
+  function customers(entry: ChannelAdherence): MetricAdherence {
+    return entry.metrics.find((metric) => metric.metric === 'customers')!
+  }
+
+  it('a curva não perde o que foi registrado no fim de semana', () => {
+    // 1 e 2 de agosto são sábado e domingo; 8 e 9 também. Somando só dias úteis,
+    // a curva ficaria 4 clientes abaixo do realizado dos cartões.
+    const relatorio = computeAdherence({
+      snapshots: everyDay('2026-08-01', '2026-08-12', 'organic-search', { customers: 1 }),
+      goals,
+      range: AGOSTO,
+    })
+
+    const cartao = customers(relatorio.total)
+    const ultimoComDado = relatorio.burnup.customers.findLast((point) => point.actual !== null)!
+
+    expect(cartao.actual).toBe(12)
+    expect(ultimoComDado.date).toBe('2026-08-12')
+    expect(ultimoComDado.actual).toBe(12)
+  })
+
+  it('a projeção do fim da curva bate com a do cartão', () => {
+    const relatorio = computeAdherence({
+      snapshots: everyDay('2026-07-20', '2026-08-12', 'organic-search', { customers: 1 }),
+      goals,
+      range: AGOSTO,
+    })
+
+    const cartao = customers(relatorio.total)
+
+    expect(relatorio.burnup.customers.at(-1)!.projected).toBeCloseTo(cartao.projection!)
+  })
+
+  it('o fim de semana entra no acumulado da segunda seguinte', () => {
+    const relatorio = computeAdherence({
+      snapshots: everyDay('2026-08-03', '2026-08-11', 'organic-search', { customers: 1 }),
+      goals,
+      range: AGOSTO,
+    })
+    const curva = relatorio.burnup.customers
+
+    // 3 a 7 de agosto são cinco dias úteis; 8 e 9 são o fim de semana; 10 é
+    // segunda. O salto de 5 para 8 é o fim de semana entrando.
+    expect(curva[4].date).toBe('2026-08-07')
+    expect(curva[4].actual).toBe(5)
+    expect(curva[5].date).toBe('2026-08-10')
+    expect(curva[5].actual).toBe(8)
+  })
+
+  it('dado que termina no sábado entra no último ponto útil', () => {
+    // 15 de agosto de 2026 é um sábado: o último dia útil é 14, e o acumulado
+    // dele precisa incluir o sábado.
+    const relatorio = computeAdherence({
+      snapshots: everyDay('2026-08-01', '2026-08-15', 'organic-search', { customers: 1 }),
+      goals,
+      range: AGOSTO,
+    })
+
+    const ultimoComDado = relatorio.burnup.customers.findLast((point) => point.actual !== null)!
+
+    expect(ultimoComDado.date).toBe('2026-08-14')
+    expect(ultimoComDado.actual).toBe(15)
+    expect(ultimoComDado.actual).toBe(customers(relatorio.total).actual)
+  })
+
+  it('vale também com um canal em foco', () => {
+    const relatorio = computeAdherence({
+      snapshots: [
+        ...everyDay('2026-08-01', '2026-08-12', 'organic-search', { customers: 1 }),
+        ...everyDay('2026-08-01', '2026-08-12', 'direct', { customers: 3 }),
+      ],
+      goals: [...goals, goal('2026-08', 'direct', 42)],
+      range: AGOSTO,
+      focusChannel: 'direct',
+    })
+
+    const cartao = customers(relatorio.byChannel.find((e) => e.channel === 'direct')!)
+    const ultimoComDado = relatorio.burnup.customers.findLast((point) => point.actual !== null)!
+
+    expect(cartao.actual).toBe(36)
+    expect(ultimoComDado.actual).toBe(36)
   })
 })

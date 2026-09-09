@@ -39,8 +39,26 @@ completos, com o canal em destaque, porque é comparando que a escolha faz
 sentido. Cada card diz de quem são os números que mostra. Ver
 [`docs/decisions/0006`](docs/decisions/0006-foco-em-um-canal.md).
 
-Próximas fatias, ainda não começadas: comparação com o período anterior;
-decomposição do gap em volume contra eficiência; ticket médio e receita por MQL.
+**V2, fatia 3 — valor por canal (entregue).** Card com ticket médio e receita por
+MQL de cada canal, contra o que a meta pressupõe. Só foi possível depois de
+confirmado que a receita de um dia pertence aos clientes fechados naquele dia —
+o contrato de dados agora diz isso, e a
+[`decisão 0007`](docs/decisions/0007-receita-pertence-aos-clientes-do-dia.md)
+registra o que essa garantia autoriza e o que continua fora de alcance. Sem
+colunas de semana: um canal fecha poucos clientes por semana, e a média semanal
+seria um contrato único disfarçado de média.
+
+**V2, fatia 4 — comparação com o período anterior (entregue).** Cada um dos
+quatro números do topo e cada linha da tabela por canal ganharam a variação
+contra a janela equivalente anterior. Equivalente quer dizer os mesmos dias úteis
+**realizados**: num mês com 8 de 21 dias decorridos, a comparação é contra os 8
+dias úteis anteriores, não contra o mês inteiro — senão todo canal apareceria
+despencando todo começo de mês. Sem histórico anterior suficiente, a comparação é
+recusada com aviso na régua em vez de calculada contra zeros. Ver
+[`docs/decisions/0008`](docs/decisions/0008-comparacao-com-o-periodo-anterior.md).
+
+Próxima fatia, ainda não começada: decomposição do gap em volume contra
+eficiência de conversão.
 
 **Único item em aberto: hospedagem.** A Vercel foi descartada por restrições de
 compliance e nenhuma alternativa foi escolhida, então o dashboard roda apenas

@@ -4,7 +4,7 @@ import type { DateRange } from '../period'
 import { listChannels } from './funnel-query'
 import { safeRatio } from './ratio'
 import {
-  CONVERSION_RATIO_DEFINITIONS,
+  FUNNEL_RATIO_DEFINITIONS,
   FUNNEL_STAGES,
   METRIC_LABELS,
   type ConversionRatio,
@@ -185,7 +185,7 @@ export function buildConversionWeeks(
   const end = lastDataDate < range.to ? lastDataDate : range.to
   if (end < range.from) return []
 
-  const { numerator, denominator } = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const { numerator, denominator } = FUNNEL_RATIO_DEFINITIONS[ratio]
   const known = new Set(channels)
 
   const weeks: ConversionWeek[] = []

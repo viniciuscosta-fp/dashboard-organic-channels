@@ -1,5 +1,5 @@
 import { safeRatio } from './data/ratio'
-import { isCurrencyMetric, type Metric } from './data/types'
+import { isCurrencyMetric, type Metric, type RatioUnit } from './data/types'
 
 const integerFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
 
@@ -105,6 +105,23 @@ export function formatRatio(ratio: number): string {
 }
 
 /**
+ * Variação relativa com sinal explícito: `+12,3%`, `−12,3%`.
+ *
+ * `null` vira travessão — é o que a variação sobre base zero devolve, e "+100%"
+ * ali seria invenção. O `+` é obrigatório pelo mesmo motivo de
+ * `formatSignedCount`: sem ele, crescimento e queda se distinguem por um
+ * caractere fácil de perder numa coluna.
+ */
+export function formatSignedRatio(ratio: number | null): string {
+  if (ratio === null) return '—'
+
+  const rounded = Math.round(ratio * 1000) / 1000
+  if (rounded === 0) return formatRatio(0)
+
+  return `${rounded > 0 ? '+' : '−'}${formatRatio(Math.abs(rounded))}`
+}
+
+/**
  * Formata uma razão que pode não existir. `null` vira travessão.
  *
  * É o par de exibição de `safeRatio`: quem calcula devolve `null` para "não há
@@ -132,6 +149,24 @@ export function formatRate(numerator: number, denominator: number): string {
  * Usa o mesmo `−` (U+2212) de `formatSignedCount`, pela razão registrada ali:
  * hífen e sinal de menos se confundem numa coluna numérica.
  */
+/**
+ * Valor de uma razão do funil, conforme a natureza dela.
+ *
+ * Conversão é percentual; valor é dinheiro. Quem exibe não escolhe o formatador
+ * na mão — a natureza vem da definição da razão, pelo mesmo motivo que
+ * `formatMetricValue` existe.
+ */
+export function formatRatioValue(unit: RatioUnit, value: number | null): string {
+  if (value === null) return '—'
+  return unit === 'valor' ? formatCurrency(value) : formatRatio(value)
+}
+
+/** Diferença entre duas razões: pontos percentuais para conversão, reais para valor. */
+export function formatRatioDelta(unit: RatioUnit, delta: number | null): string {
+  if (delta === null) return '—'
+  return unit === 'valor' ? formatSignedMetric('revenue', delta) : formatPoints(delta)
+}
+
 export function formatPoints(delta: number): string {
   const points = delta * 100
   const rounded = Math.round(points * 10) / 10

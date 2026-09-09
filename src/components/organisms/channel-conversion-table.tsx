@@ -1,19 +1,19 @@
 import {
   BASE_MINIMA_SEMANAL,
-  type ChannelConversion,
+  type ChannelRatios,
   type RatioComparison,
 } from '@/lib/data/funnel-efficiency'
 import type { ConversionWeek, ConversionWeekDelta } from '@/lib/data/funnel-view'
-import { CONVERSION_RATIO_DEFINITIONS, METRIC_LABELS, type ConversionRatio } from '@/lib/data/types'
+import { FUNNEL_RATIO_DEFINITIONS, METRIC_LABELS, type ConversionRatio } from '@/lib/data/types'
 import { formatCount, formatOptionalRatio, formatPoints } from '@/lib/format'
 import { seriesColorOf } from '@/lib/series-colors'
 
 interface ChannelConversionTableProps {
   ratio: ConversionRatio
   /** Uma linha por canal, na ordem do cadastro. */
-  rows: ChannelConversion[]
+  rows: ChannelRatios[]
   /** Consolidado de todos os canais, exibido no rodapé. */
-  total: ChannelConversion
+  total: ChannelRatios
   weeks: ConversionWeek[]
   delta: ConversionWeekDelta
   /** Ordem canônica dos canais, para a cor casar com a dos gráficos. */
@@ -45,7 +45,7 @@ export function ChannelConversionTable({
   labels,
   highlight = null,
 }: ChannelConversionTableProps) {
-  const definition = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const definition = FUNNEL_RATIO_DEFINITIONS[ratio]
   const gapNote = describeGap(total.ratios[ratio], ratio, labels)
 
   return (
@@ -263,7 +263,7 @@ function describeGap(
   ratio: ConversionRatio,
   labels: Record<string, string>,
 ): string | null {
-  const { numerator, denominator } = CONVERSION_RATIO_DEFINITIONS[ratio]
+  const { numerator, denominator } = FUNNEL_RATIO_DEFINITIONS[ratio]
 
   switch (comparison.benchmarkGap) {
     case null:

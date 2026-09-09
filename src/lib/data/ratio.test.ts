@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ratioDelta, safeRatio } from './ratio'
+import { ratioDelta, relativeChange, safeRatio } from './ratio'
 
 describe('safeRatio', () => {
   it('divide quando há denominador', () => {
@@ -36,5 +36,25 @@ describe('ratioDelta', () => {
 
   it('não confunde diferença zero com ausência', () => {
     expect(ratioDelta(0.3, 0.3)).toBe(0)
+  })
+})
+
+describe('relativeChange', () => {
+  it('mede crescimento e queda em fração', () => {
+    expect(relativeChange(30, 20)).toBeCloseTo(0.5)
+    expect(relativeChange(10, 20)).toBeCloseTo(-0.5)
+  })
+
+  it('devolve null quando a base anterior é zero, e não infinito', () => {
+    expect(relativeChange(8, 0)).toBeNull()
+    expect(Number.isFinite(relativeChange(8, 0) ?? 0)).toBe(true)
+  })
+
+  it('não trata dois zeros como variação zero', () => {
+    expect(relativeChange(0, 0)).toBeNull()
+  })
+
+  it('mede desaparecimento como queda de cem por cento', () => {
+    expect(relativeChange(0, 20)).toBeCloseTo(-1)
   })
 })

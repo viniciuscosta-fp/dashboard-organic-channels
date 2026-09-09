@@ -1,10 +1,6 @@
 import Link from 'next/link'
 
-import {
-  CONVERSION_RATIO_DEFINITIONS,
-  CONVERSION_RATIOS,
-  type ConversionRatio,
-} from '@/lib/data/types'
+import { FUNNEL_RATIO_DEFINITIONS, CONVERSION_RATIOS, type ConversionRatio } from '@/lib/data/types'
 
 interface RatioTabsProps {
   current: ConversionRatio
@@ -25,14 +21,14 @@ export function RatioTabs({ current, baseQuery }: RatioTabsProps) {
               <Link
                 href={{ pathname: '/', query: { ...baseQuery, taxa: ratio } }}
                 aria-current={active ? 'page' : undefined}
-                title={CONVERSION_RATIO_DEFINITIONS[ratio].label}
+                title={FUNNEL_RATIO_DEFINITIONS[ratio].label}
                 className={
                   active
                     ? 'bg-ink text-surface rounded-full px-3 py-1 text-xs font-medium'
                     : 'ring-hairline text-ink-secondary hover:text-ink rounded-full px-3 py-1 text-xs ring-1'
                 }
               >
-                {CONVERSION_RATIO_DEFINITIONS[ratio].shortLabel}
+                {FUNNEL_RATIO_DEFINITIONS[ratio].shortLabel}
               </Link>
             </li>
           )

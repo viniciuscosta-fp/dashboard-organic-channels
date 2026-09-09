@@ -17,7 +17,24 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const ISO_MONTH = /^\d{4}-\d{2}$/
 
 /** Teto de segurança para não iterar um intervalo absurdo vindo da URL. */
-const MAX_DIAS_INTERVALO = 1200
+export const MAX_DIAS_INTERVALO = 1200
+
+/** Folga em dias corridos para o intervalo cobrir dias úteis nas duas pontas. */
+export const FOLGA_CALENDARIO_DIAS = 7
+
+/**
+ * Dias corridos que cobrem com folga uma quantidade de dias úteis.
+ *
+ * Serve para decidir **antes de ler o dado** o quanto recuar numa consulta: cada
+ * semana tem cinco dias úteis, e a folga cobre qualquer alinhamento de início e
+ * fim de semana. Superestima de propósito — errar para mais custa algumas linhas
+ * a mais na leitura; errar para menos deixa a janela de comparação incompleta e
+ * o dashboard mostra uma queda que não existe.
+ */
+export function calendarSpanForBusinessDays(businessDays: number): number {
+  if (businessDays <= 0) return 0
+  return Math.ceil(businessDays / 5) * 7 + FOLGA_CALENDARIO_DIAS
+}
 
 export function isIsoDate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false

@@ -7,12 +7,14 @@ import { GoalKpiCard } from '@/components/molecules/goal-kpi-card'
 import { MetricTabs } from '@/components/molecules/metric-tabs'
 import { PeriodPicker } from '@/components/molecules/period-picker'
 import { PeriodSummary } from '@/components/molecules/period-summary'
+import { ProjectionNote } from '@/components/molecules/projection-note'
 import { RatioTabs } from '@/components/molecules/ratio-tabs'
 import { ScopeNotice } from '@/components/molecules/scope-notice'
 import { BurnupChart } from '@/components/organisms/burnup-chart'
 import { ChannelConversionTable } from '@/components/organisms/channel-conversion-table'
 import { ChannelGoalTable } from '@/components/organisms/channel-goal-table'
 import { ChannelTrendChart } from '@/components/organisms/channel-trend-chart'
+import { ChannelValueTable } from '@/components/organisms/channel-value-table'
 import { DataError } from '@/components/organisms/data-error'
 import { FunnelStagesChart } from '@/components/organisms/funnel-stages-chart'
 import { DashboardShell } from '@/components/templates/dashboard-shell'
@@ -22,7 +24,7 @@ import {
   resolveChannelParam,
 } from '@/lib/dashboard-params'
 import { resolveChannels } from '@/lib/data/channel-catalog'
-import { computeConversionMatrix } from '@/lib/data/funnel-efficiency'
+import { computeRatioMatrix } from '@/lib/data/funnel-efficiency'
 import { applyFunnelQuery, listChannels, sumMetrics } from '@/lib/data/funnel-query'
 import {
   getChannels,
@@ -38,8 +40,9 @@ import {
   MAX_SEMANAS_EXIBIDAS,
   trendGranularity,
 } from '@/lib/data/funnel-view'
-import { computeAdherence, dataRangeFor } from '@/lib/data/goal-math'
-import { CONVERSION_RATIO_DEFINITIONS } from '@/lib/data/types'
+import { computeAdherence, dataRangeWithComparisonFor, firstDataDate } from '@/lib/data/goal-math'
+import { computePeriodComparison } from '@/lib/data/period-comparison'
+import { FUNNEL_RATIO_DEFINITIONS } from '@/lib/data/types'
 import { todayInBusinessTimezone } from '@/lib/period'
 
 export default function Page({ searchParams }: PageProps<'/'>) {
@@ -76,10 +79,12 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
   let goals
   let registeredChannels
   try {
-    // O histórico buscado começa antes do período, para a janela de tendência
-    // caber, e nunca passa de hoje — dado futuro não existe em fonte nenhuma.
+    // O histórico buscado começa antes do período — o bastante para a janela de
+    // tendência e para a janela equivalente anterior caberem — e nunca passa de
+    // hoje: dado futuro não existe em fonte nenhuma. O intervalo é
+    // determinístico, então continua sendo uma chave de cache e uma ida à fonte.
     ;[snapshots, goals, registeredChannels] = await Promise.all([
-      getFunnelSnapshots(dataRangeFor(range, today)),
+      getFunnelSnapshots(dataRangeWithComparisonFor(range, today)),
       getGoals(),
       getChannels(),
     ])
@@ -125,11 +130,18 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
   const scopedSnapshots =
     channel === null ? inPeriod : applyFunnelQuery(inPeriod, { channels: [channel] })
 
-  const conversion = computeConversionMatrix({
+  const conversion = computeRatioMatrix({
     periodSnapshots: inPeriod,
     goals,
     channels: channelOrder,
     timing: report.timing,
+  })
+
+  const comparison = computePeriodComparison({
+    snapshots,
+    timing: report.timing,
+    firstDataDate: firstDataDate(snapshots),
+    channels: channelOrder,
   })
 
   // As semanas saem do conjunto largo, não do recorte: é o que permite a
@@ -161,6 +173,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           timing={report.timing}
           missingGoalMonths={report.missingGoalMonths}
           unregisteredChannels={catalog.unregistered}
+          comparison={comparison}
         />
         <ScopeNotice channelLabel={channelLabel} />
       </div>
@@ -193,6 +206,9 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               anchorDate={report.timing.lastDataDate}
               metric={metric}
             />
+            <ProjectionNote
+              confidence={scope.metrics.find((entry) => entry.metric === metric)!.confidence}
+            />
           </Card>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -223,7 +239,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           <Card>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <CardTitle
-                hint={`Todos os canais · ${CONVERSION_RATIO_DEFINITIONS[ratio].label} · semanas completas de segunda a domingo, até ${MAX_SEMANAS_EXIBIDAS} mais recentes`}
+                hint={`Todos os canais · ${FUNNEL_RATIO_DEFINITIONS[ratio].label} · semanas completas de segunda a domingo, até ${MAX_SEMANAS_EXIBIDAS} mais recentes`}
               >
                 Taxas de conversão
               </CardTitle>
@@ -243,6 +259,19 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           </Card>
 
           <Card>
+            <CardTitle hint="Todos os canais · receita e clientes do período">
+              Valor por canal
+            </CardTitle>
+            <ChannelValueTable
+              rows={conversion.byChannel}
+              total={conversion.total}
+              order={channelOrder}
+              labels={channelLabels}
+              highlight={channel}
+            />
+          </Card>
+
+          <Card>
             <CardTitle hint="Todos os canais · meta rateada por dias úteis">
               Aderência por canal
             </CardTitle>
@@ -251,6 +280,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               catalog={catalog}
               order={channelOrder}
               highlight={channel}
+              comparison={comparison}
             />
           </Card>
         </>
@@ -283,7 +313,7 @@ function DashboardSkeleton() {
       <div className="bg-surface ring-hairline h-8 rounded-xl ring-1" />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
-          <div key={index} className="bg-surface ring-hairline h-40 rounded-xl ring-1" />
+          <div key={index} className="bg-surface ring-hairline h-28 rounded-xl ring-1" />
         ))}
       </div>
       <div className="bg-surface ring-hairline h-96 rounded-xl ring-1" />
@@ -292,6 +322,7 @@ function DashboardSkeleton() {
         <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
       </div>
       <div className="bg-surface ring-hairline h-64 rounded-xl ring-1" />
+      <div className="bg-surface ring-hairline h-56 rounded-xl ring-1" />
     </div>
   )
 }

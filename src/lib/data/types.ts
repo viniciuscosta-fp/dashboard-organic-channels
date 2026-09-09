@@ -61,17 +61,40 @@ export function isConversionRatio(value: unknown): value is ConversionRatio {
   return typeof value === 'string' && (CONVERSION_RATIOS as readonly string[]).includes(value)
 }
 
-export interface ConversionRatioDefinition {
-  numerator: FunnelStage
-  denominator: FunnelStage
+/**
+ * Razões de **valor**: dinheiro sobre contagem.
+ *
+ * Só fazem sentido porque a receita de um dia pertence aos clientes contados
+ * naquele mesmo dia — ver `docs/decisions/0007`. Sem essa garantia, `receita ÷
+ * clientes` seria a divisão de duas quantidades que se referem a grupos
+ * diferentes, e chamar isso de ticket médio seria uma afirmação sobre contrato
+ * que o dado não sustenta.
+ */
+export const VALUE_RATIOS = ['average-ticket', 'revenue-per-mql'] as const
+
+export type ValueRatio = (typeof VALUE_RATIOS)[number]
+
+export type FunnelRatio = ConversionRatio | ValueRatio
+
+/** `taxa` é percentual; `valor` é dinheiro. Decide formatação e limiar de base. */
+export type RatioUnit = 'taxa' | 'valor'
+
+export interface RatioDefinition {
+  numerator: Metric
+  denominator: Metric
   /** Nome completo, para título e legenda. */
   label: string
   /** Versão curta, para aba e cabeçalho de coluna. */
   shortLabel: string
+  unit: RatioUnit
 }
 
 /**
- * O par de métricas de cada razão.
+ * O par de métricas de cada razão, num lugar só.
+ *
+ * Uma tabela e não cinco cálculos: é o que garante que conversão e ticket médio
+ * nunca divirjam de política de nulo, de janela de rateio da meta ou de
+ * tratamento de meta ausente.
  *
  * `mql-to-customer` é `customers / mqls` **direto**, e não o produto das duas
  * etapas anteriores. Algebricamente daria no mesmo enquanto houver oportunidade,
@@ -79,24 +102,41 @@ export interface ConversionRatioDefinition {
  * registro, ou cliente fechado sem oportunidade cadastrada. Nesse caso o produto
  * é indefinido e a divisão direta continua válida.
  */
-export const CONVERSION_RATIO_DEFINITIONS: Record<ConversionRatio, ConversionRatioDefinition> = {
+export const FUNNEL_RATIO_DEFINITIONS: Record<FunnelRatio, RatioDefinition> = {
   'mql-to-opportunity': {
     numerator: 'opportunities',
     denominator: 'mqls',
     label: 'MQL → Oportunidade',
     shortLabel: 'MQL→Opp',
+    unit: 'taxa',
   },
   'opportunity-to-customer': {
     numerator: 'customers',
     denominator: 'opportunities',
     label: 'Oportunidade → Cliente',
     shortLabel: 'Opp→Cli',
+    unit: 'taxa',
   },
   'mql-to-customer': {
     numerator: 'customers',
     denominator: 'mqls',
     label: 'MQL → Cliente',
     shortLabel: 'MQL→Cli',
+    unit: 'taxa',
+  },
+  'average-ticket': {
+    numerator: 'revenue',
+    denominator: 'customers',
+    label: 'Ticket médio',
+    shortLabel: 'Ticket',
+    unit: 'valor',
+  },
+  'revenue-per-mql': {
+    numerator: 'revenue',
+    denominator: 'mqls',
+    label: 'Receita por MQL',
+    shortLabel: 'Receita/MQL',
+    unit: 'valor',
   },
 }
 

@@ -36,6 +36,14 @@ date        channel        revenue   mqls  opportunities  customers
 **A coluna `date` precisa estar formatada como texto simples.** Como célula de
 data, a API a devolve como número serial e o dashboard não a reconhece.
 
+**A receita de um dia pertence aos clientes contados naquele mesmo dia.** Não é
+receita recorrente rateada, nem parcela, nem expansão de contrato antigo: é o
+valor dos negócios fechados no dia. É isso que torna `revenue ÷ customers` um
+ticket médio de verdade, e não a divisão de duas quantidades que se referem a
+grupos diferentes. Se a coleta passar a trazer receita de outra natureza, o
+"Valor por canal" do dashboard deixa de significar o que diz — ver
+[`decisions/0007`](decisions/0007-receita-pertence-aos-clientes-do-dia.md).
+
 **Um dia e canal aceitam uma linha só.** Duplicata derruba a leitura apontando
 as duas linhas — não é somada. Todo cálculo do dashboard soma o período, então
 uma repetição dobraria o número em silêncio. Ver

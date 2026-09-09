@@ -168,6 +168,8 @@ como Partial Prerender.
   decisão 1 desnecessária e permitiria conversão de verdade
 - A defasagem entre etapas crescer a ponto de a leitura semanal virar ruído
   puro, o que exigiria elevar o agrupamento para quinzenal ou mensal
-- Entrar razão de valor (ticket médio, receita por MQL), que precisa de uma
+- ~~Entrar razão de valor (ticket médio, receita por MQL), que precisa de uma
   resposta que o `docs/data-contract.md` ainda não dá: se a receita do dia D
-  pertence aos clientes contados no dia D
+  pertence aos clientes contados no dia D~~ — respondido em
+  [`0007`](0007-receita-pertence-aos-clientes-do-dia.md): pertence. As razões de
+  valor entraram no mesmo caminho de código das conversões

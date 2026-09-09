@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { BASE_MINIMA_CONVERSAO, computeConversionMatrix, ratioOf } from './funnel-efficiency'
+import {
+  BASE_MINIMA_CONVERSAO,
+  BASE_MINIMA_VALOR,
+  computeRatioMatrix,
+  ratioOf,
+} from './funnel-efficiency'
 import { computeTiming } from './goal-math'
 import type { FunnelSnapshot, FunnelTotals, Metric, MonthlyGoal } from './types'
 
@@ -59,7 +64,7 @@ describe('ratioOf', () => {
   })
 })
 
-describe('computeConversionMatrix — razões realizadas', () => {
+describe('computeRatioMatrix — razões realizadas', () => {
   const timing = computeTiming(AGOSTO, '2026-08-31')
 
   it('consolida pela razão das somas, não pela média das razões dos canais', () => {
@@ -68,7 +73,7 @@ describe('computeConversionMatrix — razões realizadas', () => {
       snapshot('2026-08-03', 'brand', { mqls: 118, customers: 47 }),
     ]
 
-    const { total, byChannel } = computeConversionMatrix({
+    const { total, byChannel } = computeRatioMatrix({
       periodSnapshots: snapshots,
       goals: [],
       timing,
@@ -84,7 +89,7 @@ describe('computeConversionMatrix — razões realizadas', () => {
   })
 
   it('publica o denominador como base da razão', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 112, opportunities: 27 })],
       goals: [],
       timing,
@@ -94,14 +99,14 @@ describe('computeConversionMatrix — razões realizadas', () => {
   })
 
   it('marca base fina abaixo do mínimo e não a marca na fronteira exata', () => {
-    const abaixo = computeConversionMatrix({
+    const abaixo = computeRatioMatrix({
       periodSnapshots: [
         snapshot('2026-08-03', 'brand', { mqls: BASE_MINIMA_CONVERSAO - 1, opportunities: 8 }),
       ],
       goals: [],
       timing,
     })
-    const naFronteira = computeConversionMatrix({
+    const naFronteira = computeRatioMatrix({
       periodSnapshots: [
         snapshot('2026-08-03', 'brand', { mqls: BASE_MINIMA_CONVERSAO, opportunities: 8 }),
       ],
@@ -114,7 +119,7 @@ describe('computeConversionMatrix — razões realizadas', () => {
   })
 
   it('não marca base fina quando não há razão nenhuma', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 0, opportunities: 0 })],
       goals: [],
       timing,
@@ -125,7 +130,7 @@ describe('computeConversionMatrix — razões realizadas', () => {
   })
 
   it('inclui canal com meta e sem nenhum resultado no período', () => {
-    const { byChannel } = computeConversionMatrix({
+    const { byChannel } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 30 })],
       goals: [goal('2026-08', 'ai_referrals', 'mqls', 120)],
       timing,
@@ -136,14 +141,130 @@ describe('computeConversionMatrix — razões realizadas', () => {
   })
 })
 
-describe('computeConversionMatrix — conversão implícita na meta', () => {
+describe('computeRatioMatrix — razões de valor', () => {
+  const timing = computeTiming(AGOSTO, '2026-08-31')
+
+  it('calcula ticket médio e receita por MQL', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'brand', { revenue: 27_400, mqls: 400, customers: 100 }),
+      ],
+      goals: [],
+      timing,
+    })
+
+    expect(total.ratios['average-ticket'].actual).toBeCloseTo(274)
+    expect(total.ratios['average-ticket'].base).toBe(100)
+    expect(total.ratios['revenue-per-mql'].actual).toBeCloseTo(68.5)
+    expect(total.ratios['revenue-per-mql'].base).toBe(400)
+  })
+
+  it('vale a identidade receita por MQL = ticket médio × conversão MQL para cliente', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'brand', { revenue: 18_450, mqls: 331, customers: 62 }),
+      ],
+      goals: [],
+      timing,
+    })
+
+    const ticket = total.ratios['average-ticket'].actual!
+    const conversao = total.ratios['mql-to-customer'].actual!
+
+    expect(total.ratios['revenue-per-mql'].actual).toBeCloseTo(ticket * conversao, 10)
+  })
+
+  it('não há ticket médio sem cliente fechado', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [snapshot('2026-08-03', 'brand', { revenue: 0, mqls: 40, customers: 0 })],
+      goals: [],
+      timing,
+    })
+
+    expect(total.ratios['average-ticket'].actual).toBeNull()
+    expect(total.ratios['revenue-per-mql'].actual).toBe(0)
+  })
+
+  it('usa o limiar de base próprio do valor, e não o das conversões', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'brand', {
+          revenue: 2_000,
+          mqls: 100,
+          customers: BASE_MINIMA_VALOR,
+        }),
+      ],
+      goals: [],
+      timing,
+    })
+
+    // Cinco clientes bastam para o ticket, mas não bastariam para uma conversão.
+    expect(BASE_MINIMA_VALOR).toBeLessThan(BASE_MINIMA_CONVERSAO)
+    expect(total.ratios['average-ticket'].thin).toBe(false)
+  })
+
+  it('marca ticket médio apoiado em pouquíssimos clientes', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'brand', {
+          revenue: 2_000,
+          mqls: 100,
+          customers: BASE_MINIMA_VALOR - 1,
+        }),
+      ],
+      goals: [],
+      timing,
+    })
+
+    expect(total.ratios['average-ticket'].thin).toBe(true)
+  })
+
+  it('compara o ticket médio com o implícito na meta', () => {
+    const { total } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'brand', { revenue: 5_000, mqls: 100, customers: 20 }),
+      ],
+      goals: [
+        goal('2026-08', 'brand', 'revenue', 56_000),
+        goal('2026-08', 'brand', 'customers', 200),
+      ],
+      timing,
+    })
+
+    const comparison = total.ratios['average-ticket']
+
+    expect(comparison.benchmark).toBeCloseTo(280)
+    expect(comparison.actual).toBeCloseTo(250)
+    expect(comparison.delta).toBeCloseTo(-30)
+  })
+
+  it('consolida o ticket médio pela razão das somas, não pela média dos canais', () => {
+    const { total, byChannel } = computeRatioMatrix({
+      periodSnapshots: [
+        snapshot('2026-08-03', 'grande', { revenue: 20_000, customers: 100 }),
+        snapshot('2026-08-03', 'pequeno', { revenue: 2_000, customers: 4 }),
+      ],
+      goals: [],
+      timing,
+    })
+
+    const porCanal = byChannel.map((entry) => entry.ratios['average-ticket'].actual!)
+    const mediaSimples = (porCanal[0] + porCanal[1]) / 2
+
+    // 22.000 / 104 = R$ 211,54. A média simples daria R$ 350 e mentiria feio.
+    expect(total.ratios['average-ticket'].actual).toBeCloseTo(22_000 / 104, 6)
+    expect(mediaSimples).toBeCloseTo(350)
+  })
+})
+
+describe('computeRatioMatrix — conversão implícita na meta', () => {
   const parDeMetas = (channel: string, month: string, mqls: number, opportunities: number) => [
     goal(month, channel, 'mqls', mqls),
     goal(month, channel, 'opportunities', opportunities),
   ]
 
   it('calcula o benchmark a partir do par de metas rateado', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 24 })],
       goals: parDeMetas('brand', '2026-08', 200, 60),
       timing: computeTiming(AGOSTO, '2026-08-31'),
@@ -160,12 +281,12 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
     const goals = parDeMetas('brand', '2026-08', 200, 60)
     const snapshots = [snapshot('2026-08-03', 'brand', { mqls: 40, opportunities: 10 })]
 
-    const meioDoMes = computeConversionMatrix({
+    const meioDoMes = computeRatioMatrix({
       periodSnapshots: snapshots,
       goals,
       timing: computeTiming(AGOSTO, '2026-08-14'),
     })
-    const mesFechado = computeConversionMatrix({
+    const mesFechado = computeRatioMatrix({
       periodSnapshots: snapshots,
       goals,
       timing: computeTiming(AGOSTO, '2026-08-31'),
@@ -183,7 +304,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
       ...parDeMetas('brand', '2026-08', 100, 40),
     ]
 
-    const soJulho = computeConversionMatrix({
+    const soJulho = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-07-15', 'brand', { mqls: 50, opportunities: 12 })],
       goals,
       timing: computeTiming(JULHO_E_AGOSTO, '2026-07-31'),
@@ -195,7 +316,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('sem nenhum dado no período, publica o benchmark do período inteiro e não publica delta', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [],
       goals: [
         ...parDeMetas('brand', '2026-07', 100, 20),
@@ -213,7 +334,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('trata meta zero explícita como benchmark zero, não como meta ausente', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 5 })],
       goals: parDeMetas('brand', '2026-08', 200, 0),
       timing: computeTiming(AGOSTO, '2026-08-31'),
@@ -227,7 +348,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('recusa o benchmark quando nenhum mês tem meta do numerador', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 24 })],
       goals: [goal('2026-08', 'brand', 'mqls', 200)],
       timing: computeTiming(AGOSTO, '2026-08-31'),
@@ -238,7 +359,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('recusa o benchmark quando nenhum mês tem meta do denominador', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 24 })],
       goals: [goal('2026-08', 'brand', 'opportunities', 60)],
       timing: computeTiming(AGOSTO, '2026-08-31'),
@@ -249,7 +370,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('recusa o benchmark quando as duas métricas têm meta em meses diferentes', () => {
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: [snapshot('2026-07-15', 'brand', { mqls: 100, opportunities: 24 })],
       goals: [
         goal('2026-07', 'brand', 'mqls', 100),
@@ -265,7 +386,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
   })
 
   it('recusa o benchmark consolidado quando parte dos canais não tem o par de metas', () => {
-    const { total, byChannel } = computeConversionMatrix({
+    const { total, byChannel } = computeRatioMatrix({
       periodSnapshots: [
         snapshot('2026-08-03', 'brand', { mqls: 100, opportunities: 30 }),
         snapshot('2026-08-03', 'compare', { mqls: 80, opportunities: 16 }),
@@ -289,7 +410,7 @@ describe('computeConversionMatrix — conversão implícita na meta', () => {
     // numerador com quatro canais sobre um denominador com três.
     const canais = ['a', 'b', 'c', 'd']
 
-    const { total } = computeConversionMatrix({
+    const { total } = computeRatioMatrix({
       periodSnapshots: canais.map((channel) =>
         snapshot('2026-08-03', channel, { mqls: 100, opportunities: 25 }),
       ),

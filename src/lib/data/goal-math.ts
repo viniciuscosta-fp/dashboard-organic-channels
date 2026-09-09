@@ -2,7 +2,9 @@ import {
   addDays,
   businessDaysByMonth,
   businessDaysInMonth,
+  calendarSpanForBusinessDays,
   countBusinessDays,
+  eachDay,
   lastBusinessDaysUpTo,
   listBusinessDays,
   monthOf,
@@ -87,6 +89,27 @@ export function dataRangeFor(range: DateRange, today: string): DateRange {
     from: addDays(range.from, -LOOKBACK_TENDENCIA_DIAS),
     to: range.to < today ? range.to : today,
   }
+}
+
+/**
+ * Intervalo a buscar quando o dashboard também compara com o período anterior.
+ *
+ * É **determinístico**: depende só do recorte e de hoje, nunca do dado. É isso
+ * que mantém uma chave de cache e uma ida à fonte, mesmo que o tamanho exato da
+ * janela anterior só seja conhecido depois de ler o dado — o limite superior
+ * dela (os dias úteis do período inteiro) é calculável antes.
+ *
+ * A alternativa seria uma segunda chamada a `getFunnelSnapshots` com a janela
+ * anterior. Seria legítima quanto às regras de cache, mas `SheetsFunnelRepository`
+ * lê a aba inteira e filtra em memória: a segunda chamada custaria outra leitura
+ * completa da API, serializada depois da primeira, para obter linhas que a
+ * primeira já poderia ter trazido.
+ */
+export function dataRangeWithComparisonFor(range: DateRange, today: string): DateRange {
+  const base = dataRangeFor(range, today)
+  const span = calendarSpanForBusinessDays(countBusinessDays(range.from, range.to))
+
+  return { from: addDays(base.from, -span), to: base.to }
 }
 
 export interface MetricAdherence {
@@ -353,8 +376,19 @@ function buildMetricAdherence(
 /**
  * Curva acumulada de um período: realizado, meta e continuação estimada.
  *
- * Os pontos são os **dias úteis** do período. Incluir fim de semana só
- * acrescentaria degraus planos, já que nem a meta nem o ritmo avançam ali.
+ * Os **pontos** são os dias úteis do período: nem a meta nem o ritmo avançam no
+ * fim de semana, e pontos de sábado e domingo só acrescentariam degraus planos.
+ *
+ * Mas o **acumulado** varre todos os dias corridos. Isso não é detalhe: a coleta
+ * grava sábado e domingo, e somar só o registro do próprio dia útil descartaria
+ * esse resultado em silêncio — a curva ficaria abaixo do realizado que os
+ * cartões mostram, com a diferença crescendo ao longo do período. O que houve no
+ * fim de semana entra no acumulado da segunda seguinte, que é onde ele já estava
+ * cronologicamente.
+ *
+ * O último ponto com dado varre até `lastDataDate`, que pode cair num sábado.
+ * Assim o fim da curva é exatamente `MetricAdherence.actual`, e o fim da
+ * projeção é exatamente `MetricAdherence.projection`.
  *
  * A projeção começa exatamente no último ponto com dado, e não no dia seguinte,
  * para as duas linhas se encontrarem em vez de aparecerem descoladas.
@@ -372,15 +406,32 @@ export function buildBurnup(
     byDate.set(snapshot.date, (byDate.get(snapshot.date) ?? 0) + snapshot[metric])
   }
 
+  const businessDays = listBusinessDays(timing.range.from, timing.range.to)
+  const lastData = timing.lastDataDate
+
+  // Onde o realizado para. `null` quando o período ainda não alcançou nenhum
+  // dia útil com dado.
+  const anchorDate =
+    lastData === null ? null : (businessDays.filter((date) => date <= lastData).at(-1) ?? null)
+
   const running = new Map<IsoMonth, number>()
   let cumulative = 0
+  let cursor = timing.range.from
 
-  const points: BurnupPoint[] = listBusinessDays(timing.range.from, timing.range.to).map((date) => {
+  const points: BurnupPoint[] = businessDays.map((date) => {
     const month = monthOf(date)
     running.set(month, (running.get(month) ?? 0) + 1)
 
-    const elapsed = timing.lastDataDate !== null && date <= timing.lastDataDate
-    if (elapsed) cumulative += byDate.get(date) ?? 0
+    const elapsed = anchorDate !== null && date <= anchorDate
+
+    if (elapsed) {
+      const until = date === anchorDate && lastData !== null && lastData > date ? lastData : date
+
+      for (const day of eachDay(cursor, until)) {
+        cumulative += byDate.get(day) ?? 0
+      }
+      cursor = addDays(until, 1)
+    }
 
     return {
       date,

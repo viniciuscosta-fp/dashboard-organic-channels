@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
+import { countBusinessDays } from './business-days'
 import {
   DEFAULT_PRESET,
   isValidRange,
   MAX_PERIOD_DAYS,
   parsePeriod,
   periodSearchParams,
+  previousComparableRange,
   resolvePreset,
 } from './period'
 
@@ -164,5 +166,43 @@ describe('periodSearchParams', () => {
   it('a ida e volta preserva o intervalo', () => {
     const range = { from: '2026-06-01', to: '2026-06-30' }
     expect(parsePeriod(periodSearchParams(range), HOJE).range).toEqual(range)
+  })
+})
+
+describe('previousComparableRange', () => {
+  it('devolve os dias úteis imediatamente anteriores, sem tocar no fim de semana', () => {
+    // 2026-08-03 é uma segunda; os 5 dias úteis anteriores são 27 a 31 de julho.
+    expect(previousComparableRange('2026-08-03', 5)).toEqual({
+      from: '2026-07-27',
+      to: '2026-07-31',
+    })
+  })
+
+  it('o intervalo devolvido tem exatamente os dias úteis pedidos', () => {
+    for (const uteis of [1, 5, 7, 10, 21, 23]) {
+      const range = previousComparableRange('2026-08-01', uteis)!
+
+      expect(countBusinessDays(range.from, range.to)).toBe(uteis)
+    }
+  })
+
+  it('termina no último dia útil antes do início, mesmo começando no domingo', () => {
+    // 2026-08-02 é um domingo: a janela anterior fecha na sexta, dia 31.
+    expect(previousComparableRange('2026-08-02', 3)!.to).toBe('2026-07-31')
+  })
+
+  it('atravessa a virada de ano sem se interromper', () => {
+    // Segunda, 4 de janeiro de 2027. Feriado não é descontado — 1º de janeiro é
+    // sexta e conta como dia útil, como manda a decisão 0003.
+    const range = previousComparableRange('2027-01-04', 10)!
+
+    expect(range.from).toBe('2026-12-21')
+    expect(range.to).toBe('2027-01-01')
+    expect(countBusinessDays(range.from, range.to)).toBe(10)
+  })
+
+  it('não existe janela anterior de tamanho zero', () => {
+    expect(previousComparableRange('2026-08-03', 0)).toBeNull()
+    expect(previousComparableRange('2026-08-03', -2)).toBeNull()
   })
 })

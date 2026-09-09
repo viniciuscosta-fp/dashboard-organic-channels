@@ -9,6 +9,8 @@ import {
   formatOptionalRatio,
   formatPoints,
   formatRate,
+  formatRatioDelta,
+  formatRatioValue,
   formatSignedCount,
   formatSignedMetric,
 } from './format'
@@ -112,6 +114,31 @@ describe('formatPoints', () => {
 
   it('arredonda para uma casa antes de decidir o sinal', () => {
     expect(semEspacos(formatPoints(0.0002))).toBe('0p.p.')
+  })
+})
+
+describe('formatRatioValue', () => {
+  it('formata conversão como percentual e valor em reais', () => {
+    expect(formatRatioValue('taxa', 0.284)).toBe('28,4%')
+    expect(semEspacos(formatRatioValue('valor', 274.4))).toBe('R$274')
+  })
+
+  it('devolve travessão quando não há razão, nas duas naturezas', () => {
+    expect(formatRatioValue('taxa', null)).toBe('—')
+    expect(formatRatioValue('valor', null)).toBe('—')
+  })
+})
+
+describe('formatRatioDelta', () => {
+  it('usa pontos percentuais para conversão e reais para valor', () => {
+    expect(semEspacos(formatRatioDelta('taxa', -0.02))).toBe('−2,0p.p.')
+    expect(semEspacos(formatRatioDelta('valor', -30))).toBe('−R$30')
+    expect(semEspacos(formatRatioDelta('valor', 44))).toBe('+R$44')
+  })
+
+  it('devolve travessão quando não há comparação', () => {
+    expect(formatRatioDelta('taxa', null)).toBe('—')
+    expect(formatRatioDelta('valor', null)).toBe('—')
   })
 })
 
