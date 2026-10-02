@@ -2,14 +2,15 @@ import { connection } from 'next/server'
 import { Suspense } from 'react'
 
 import { Card, CardTitle } from '@/components/atoms/card'
-import { ChannelPicker } from '@/components/molecules/channel-picker'
+import { ChannelSelector, type SelectorGroup } from '@/components/molecules/channel-selector'
 import { GoalKpiCard } from '@/components/molecules/goal-kpi-card'
+import { GroupCreator } from '@/components/molecules/group-creator'
 import { MetricTabs } from '@/components/molecules/metric-tabs'
 import { PeriodPicker } from '@/components/molecules/period-picker'
 import { PeriodSummary } from '@/components/molecules/period-summary'
 import { ProjectionNote } from '@/components/molecules/projection-note'
 import { RatioTabs } from '@/components/molecules/ratio-tabs'
-import { ScopeNotice } from '@/components/molecules/scope-notice'
+import { ScopeNotice, type ScopeSelection } from '@/components/molecules/scope-notice'
 import { BurnupChart } from '@/components/organisms/burnup-chart'
 import { ChannelConversionTable } from '@/components/organisms/channel-conversion-table'
 import { ChannelGoalTable } from '@/components/organisms/channel-goal-table'
@@ -20,9 +21,21 @@ import { DataError } from '@/components/organisms/data-error'
 import { FunnelStagesChart } from '@/components/organisms/funnel-stages-chart'
 import { DashboardShell } from '@/components/templates/dashboard-shell'
 import {
+  GROUP_CREATION_MESSAGES,
+  GROUP_FORM_FIELDS,
+  groupKey,
+  isGroupCreationError,
+  MAX_GROUP_NAME_LENGTH,
+  removeCustomGroup,
+  resolveGroupParam,
+  restrictSections,
+  selectableGroups,
+} from '@/lib/channel-groups'
+import {
   dashboardSearchParams,
   parseDashboardParams,
   resolveChannelParam,
+  type DashboardParams,
 } from '@/lib/dashboard-params'
 import { groupSections, resolveChannels } from '@/lib/data/channel-catalog'
 import { computeRatioMatrix } from '@/lib/data/funnel-efficiency'
@@ -46,7 +59,7 @@ import {
 import { computeAdherence, dataRangeWithComparisonFor, firstDataDate } from '@/lib/data/goal-math'
 import { computePeriodComparison } from '@/lib/data/period-comparison'
 import { FUNNEL_RATIO_DEFINITIONS } from '@/lib/data/types'
-import { todayInBusinessTimezone } from '@/lib/period'
+import { single, todayInBusinessTimezone } from '@/lib/period'
 import { channelColors } from '@/lib/series-colors'
 
 export default function Page({ searchParams }: PageProps<'/'>) {
@@ -106,15 +119,28 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
     catalog.channels.map((entry) => [entry.channel, entry.label]),
   )
   const channelSections = groupSections(catalog)
-  // Uma cor por grupo, calculada uma vez: seletor, gráficos e tabelas leem do
-  // mesmo mapa, então a cor de um canal nunca discorda entre dois blocos.
+  // Uma cor por canal, calculada uma vez sobre o catálogo inteiro: seletor,
+  // gráficos e tabelas leem do mesmo mapa, e escolher um grupo não repinta nada.
   const colors = channelColors(catalog)
 
-  // A validação do canal só fecha aqui: a lista de canais válidos vem do dado,
-  // que o parser da URL ainda não tinha.
-  const channel = resolveChannelParam(parsed.channel, channelOrder)
-  const dashboard = { ...parsed, channel }
+  // A validação de grupo e canal só fecha aqui: as listas válidas vêm do dado,
+  // que o parser da URL ainda não tinha. Grupo tem precedência sobre canal —
+  // os dois são o mesmo eixo, a seleção.
+  const groups = selectableGroups(catalog, parsed.customGroups)
+  const group = resolveGroupParam(parsed.group, groups)
+  const channel = group ? null : resolveChannelParam(parsed.channel, channelOrder)
+  const dashboard: DashboardParams = {
+    ...parsed,
+    channel,
+    group: group?.name ?? null,
+  }
   const channelLabel = channel === null ? null : (channelLabels[channel] ?? channel)
+
+  const selection: ScopeSelection | null = group
+    ? { kind: 'grupo', label: group.name, size: group.channels.length }
+    : channelLabel
+      ? { kind: 'canal', label: channelLabel }
+      : null
 
   const report = computeAdherence({
     snapshots,
@@ -122,26 +148,35 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
     range,
     channels: channelOrder,
     focusChannel: channel,
+    focusChannels: group?.channels ?? null,
   })
+  const scope = report.scope
+
+  // Com um grupo selecionado, os blocos de comparação mostram só os canais dele
+  // — comparar dentro do grupo é o motivo de escolhê-lo. Com um canal só, seguem
+  // completos (decisão 0006). Ver docs/decisions/0010.
+  const visible = group ? new Set(group.channels) : null
+  const inView = (key: string) => visible === null || visible.has(key)
+  const visibleOrder = channelOrder.filter(inView)
+  const visibleInPeriod = inPeriod.filter((snapshot) => inView(snapshot.channel))
+  const visibleSections = visible ? restrictSections(channelSections, visible) : channelSections
+  const visibleAdherence = report.byChannel.filter((entry) => inView(entry.channel))
 
   // A tabela de aderência abre pelo canal mais urgente: com dez ou quinze
   // canais, na ordem do cadastro o canal em risco podia estar na linha 40.
-  const byChannel = sortByUrgency(report.byChannel, channelOrder)
-  const statusSummary = summarizeChannelStatus(report.byChannel, channelOrder)
+  const byChannel = sortByUrgency(visibleAdherence, channelOrder)
+  const statusSummary = summarizeChannelStatus(visibleAdherence, channelOrder)
 
-  // O escopo muda os agregados do topo, nunca as tabelas de comparação: filtrar
-  // uma tabela de comparação para uma linha só destrói o que a torna útil.
-  const scope =
-    channel === null
-      ? report.total
-      : (byChannel.find((entry) => entry.channel === channel) ?? report.total)
-  const scopedSnapshots =
-    channel === null ? inPeriod : applyFunnelQuery(inPeriod, { channels: [channel] })
+  const scopedSnapshots = group
+    ? visibleInPeriod
+    : channel === null
+      ? inPeriod
+      : applyFunnelQuery(inPeriod, { channels: [channel] })
 
   const conversion = computeRatioMatrix({
-    periodSnapshots: inPeriod,
+    periodSnapshots: visibleInPeriod,
     goals,
-    channels: channelOrder,
+    channels: visibleOrder,
     timing: report.timing,
   })
 
@@ -156,13 +191,40 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
   // primeira semana se completar com os dias anteriores ao período em vez de
   // aparecer truncada.
   const weeks = buildConversionWeeks(
-    snapshots,
+    visible ? snapshots.filter((snapshot) => inView(snapshot.channel)) : snapshots,
     ratio,
     range,
     report.timing.lastDataDate,
-    channelOrder,
+    visibleOrder,
   )
 
+  // Todo card diz de quem são os números que mostra. Os agregados seguem a
+  // seleção; os de comparação, só o grupo — canal único não os recorta.
+  const aggregateScope = group
+    ? `Grupo ${group.name} · ${group.channels.length} ${group.channels.length === 1 ? 'canal' : 'canais'}`
+    : (channelLabel ?? 'Todos os canais')
+  const comparisonScope = group ? `Grupo ${group.name}` : 'Todos os canais'
+  const totalLabel = group ? `Total de ${group.name}` : 'Consolidado'
+
+  // Todo link do seletor parte do estado atual sem canal nem grupo, e leva
+  // junto os grupos personalizados — trocar de seleção não pode apagá-los.
+  const selectionBase = dashboardSearchParams(dashboard, ['canal', 'grupo'])
+  const selectorLabel = group
+    ? `Grupo: ${group.name}`
+    : channelLabel
+      ? `Canal: ${channelLabel}`
+      : 'Todos os canais'
+  const selectorGroups: SelectorGroup[] = groups.map((entry) => ({
+    name: entry.name,
+    size: entry.channels.length,
+    source: entry.source,
+    active: group !== null && groupKey(group.name) === groupKey(entry.name),
+    href: { ...selectionBase, grupo: entry.name },
+    removeHref: entry.source === 'personalizado' ? removalQuery(dashboard, entry.name) : null,
+  }))
+
+  const notice = single(params.aviso)
+  const warning = isGroupCreationError(notice) ? GROUP_CREATION_MESSAGES[notice] : null
   return (
     <>
       <div className="space-y-3">
@@ -171,19 +233,32 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           range={range}
           baseQuery={dashboardSearchParams(dashboard, ['periodo'])}
         />
-        <ChannelPicker
-          sections={channelSections}
-          current={channel}
-          baseQuery={dashboardSearchParams(dashboard, ['canal'])}
-          colors={colors}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <ChannelSelector
+            currentLabel={selectorLabel}
+            baseQuery={selectionBase}
+            groups={selectorGroups}
+            sections={channelSections}
+            currentChannel={channel}
+            allSelected={selection === null}
+            colors={colors}
+          />
+          <GroupCreator
+            baseQuery={selectionBase}
+            sections={channelSections}
+            colors={colors}
+            fields={GROUP_FORM_FIELDS}
+            maxNameLength={MAX_GROUP_NAME_LENGTH}
+            warning={warning}
+          />
+        </div>
         <PeriodSummary
           timing={report.timing}
           missingGoalMonths={report.missingGoalMonths}
           unregisteredChannels={catalog.unregistered}
           comparison={comparison}
         />
-        <ScopeNotice channelLabel={channelLabel} />
+        <ScopeNotice selection={selection} />
       </div>
 
       {inPeriod.length === 0 ? (
@@ -197,7 +272,9 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           </div>
 
           <Card>
-            <CardTitle hint="Todos os canais · cada canal no seu pior status entre as quatro métricas">
+            <CardTitle
+              hint={`${comparisonScope} · cada canal no seu pior status entre as quatro métricas`}
+            >
               Situação dos canais
             </CardTitle>
             <ChannelStatusSummary
@@ -205,7 +282,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               labels={channelLabels}
               colors={colors}
               current={channel}
-              baseQuery={dashboardSearchParams(dashboard, ['canal'])}
+              baseQuery={selectionBase}
             />
           </Card>
 
@@ -214,7 +291,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
             <Card className="lg:col-span-2">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <CardTitle
-                  hint={`${scopeHint(channelLabel)} · acumulado no período contra a meta, com a continuação no ritmo atual`}
+                  hint={`${aggregateScope} · acumulado no período contra a meta, com a continuação no ritmo atual`}
                 >
                   Aderência acumulada
                 </CardTitle>
@@ -235,9 +312,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
             </Card>
 
             <Card>
-              <CardTitle
-                hint={`${scopeHint(channelLabel)} · total acumulado no período, por etapa`}
-              >
+              <CardTitle hint={`${aggregateScope} · total acumulado no período, por etapa`}>
                 Etapas do funil
               </CardTitle>
               <FunnelStagesChart stages={buildStageData(sumMetrics(scopedSnapshots))} />
@@ -245,7 +320,9 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           </div>
 
           <Card>
-            <CardTitle hint="Todos os canais · meta rateada por dias úteis · do canal mais urgente ao menos">
+            <CardTitle
+              hint={`${comparisonScope} · meta rateada por dias úteis · do canal mais urgente ao menos`}
+            >
               Aderência por canal
             </CardTitle>
             <ChannelGoalTable
@@ -259,13 +336,13 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
 
           <Card>
             <CardTitle
-              hint={`Todos os canais · MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}`}
+              hint={`${comparisonScope} · MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}`}
             >
               Evolução por canal
             </CardTitle>
             <ChannelTrendGrid
-              trend={buildTrendData(inPeriod, trendGranularity(range))}
-              sections={channelSections}
+              trend={buildTrendData(visibleInPeriod, trendGranularity(range))}
+              sections={visibleSections}
               colors={colors}
               highlight={channel}
             />
@@ -274,7 +351,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           <Card>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <CardTitle
-                hint={`Todos os canais · ${FUNNEL_RATIO_DEFINITIONS[ratio].label} · semanas completas de segunda a domingo, até ${MAX_SEMANAS_EXIBIDAS} mais recentes`}
+                hint={`${comparisonScope} · ${FUNNEL_RATIO_DEFINITIONS[ratio].label} · semanas completas de segunda a domingo, até ${MAX_SEMANAS_EXIBIDAS} mais recentes`}
               >
                 Taxas de conversão
               </CardTitle>
@@ -290,11 +367,12 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               colors={colors}
               labels={channelLabels}
               highlight={channel}
+              totalLabel={totalLabel}
             />
           </Card>
 
           <Card>
-            <CardTitle hint="Todos os canais · receita e clientes do período">
+            <CardTitle hint={`${comparisonScope} · receita e clientes do período`}>
               Valor por canal
             </CardTitle>
             <ChannelValueTable
@@ -303,6 +381,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               colors={colors}
               labels={channelLabels}
               highlight={channel}
+              totalLabel={totalLabel}
             />
           </Card>
         </>
@@ -318,14 +397,19 @@ const GRANULARITY_LABEL = {
 } as const
 
 /**
- * Primeiro pedaço do `hint` de um card, nomeando o escopo.
+ * Links que tiram um grupo personalizado da URL.
  *
- * Todo card diz de quem são os números que mostra. É a regra que impede o
- * filtro de canal de criar um dashboard em que metade dos blocos mudou de
- * significado e a outra metade não, sem nada na tela dizendo qual é qual.
+ * Se o grupo removido era o selecionado, a seleção cai junto — sobraria um
+ * `grupo=` apontando para nada.
  */
-function scopeHint(channelLabel: string | null): string {
-  return channelLabel ?? 'Todos os canais'
+function removalQuery(dashboard: DashboardParams, name: string): Record<string, string> {
+  const selected = dashboard.group !== null && groupKey(dashboard.group) === groupKey(name)
+
+  return dashboardSearchParams({
+    ...dashboard,
+    customGroups: removeCustomGroup(dashboard.customGroups, name),
+    group: selected ? null : dashboard.group,
+  })
 }
 
 function DashboardSkeleton() {

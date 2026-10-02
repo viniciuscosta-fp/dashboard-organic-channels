@@ -177,4 +177,52 @@ describe('dashboardSearchParams', () => {
   it('a ida e a volta preservam o canal', () => {
     expect(parseDashboardParams(dashboardSearchParams(comCanal), HOJE)).toEqual(comCanal)
   })
+
+  describe('grupos', () => {
+    const comGrupo = parseDashboardParams(
+      {
+        periodo: 'mes-atual',
+        metrica: 'mqls',
+        taxa: 'mql-to-customer',
+        grupo: 'Pago',
+        grupos: 'Pago~paid_search,paid_social|IA~ai_referrals',
+      },
+      HOJE,
+    )
+
+    it('lê o grupo selecionado e os grupos personalizados', () => {
+      expect(comGrupo.group).toBe('Pago')
+      expect(comGrupo.customGroups).toEqual([
+        { name: 'Pago', channels: ['paid_search', 'paid_social'] },
+        { name: 'IA', channels: ['ai_referrals'] },
+      ])
+    })
+
+    it('sem os parâmetros, não há grupo nem grupos personalizados', () => {
+      expect(comPreset.group).toBeNull()
+      expect(comPreset.customGroups).toEqual([])
+      expect(dashboardSearchParams(comPreset)).not.toHaveProperty('grupos')
+    })
+
+    it('trocar de período, métrica ou taxa preserva grupo e grupos personalizados', () => {
+      for (const control of ['periodo', 'metrica', 'taxa'] as const) {
+        const query = dashboardSearchParams(comGrupo, [control])
+
+        expect(query.grupo).toBe('Pago')
+        expect(query.grupos).toBe('Pago~paid_search,paid_social|IA~ai_referrals')
+      }
+    })
+
+    it('trocar de seleção omite canal e grupo, mas preserva os grupos personalizados', () => {
+      const query = dashboardSearchParams(comGrupo, ['canal', 'grupo'])
+
+      expect(query).not.toHaveProperty('grupo')
+      expect(query).not.toHaveProperty('canal')
+      expect(query.grupos).toBe('Pago~paid_search,paid_social|IA~ai_referrals')
+    })
+
+    it('a ida e a volta preservam grupo e grupos personalizados', () => {
+      expect(parseDashboardParams(dashboardSearchParams(comGrupo), HOJE)).toEqual(comGrupo)
+    })
+  })
 })

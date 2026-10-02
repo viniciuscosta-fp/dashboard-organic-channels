@@ -1,6 +1,7 @@
 # 0009 — Mais canais, agrupados
 
-- **Status:** aceita
+- **Status:** aceita; revista em parte pela [0010](0010-selecao-por-grupo.md) — a
+  cor voltou a ser por canal e o seletor virou menu suspenso
 - **Data:** 2026-10-02
 
 ## Contexto

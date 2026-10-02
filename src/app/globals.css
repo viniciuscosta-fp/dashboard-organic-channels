@@ -23,8 +23,8 @@
   --hairline: rgb(11 11 11 / 0.1);
 
   /*
-   * Categórico: um slot por grupo de canais, atribuído em ordem fixa e nunca
-   * reciclado — do sexto grupo em diante, cinza. Ver docs/decisions/0009.
+   * Categórico: um slot por canal, atribuído em ordem fixa e nunca
+   * reciclado — do sexto canal em diante, cinza. Ver docs/decisions/0010.
    */
   --series-1: #2a78d6;
   --series-2: #eb6834;

@@ -103,14 +103,16 @@ toma essa decisão, sem depender de um commit.
 `CHANNELS_SHEET_RANGE` ainda em `canais!A:C`, o dashboard funciona sem agrupar:
 cada canal fica com a própria cor, como antes. Com ela:
 
-- canais do mesmo grupo dividem a **cor** e a **seção** no seletor e na evolução
-  por canal; o nome do canal continua sendo o que o identifica
+- cada grupo aparece **pronto** no seletor do dashboard: escolhê-lo soma os
+  canais dele nos cartões, na curva e no funil, e restringe os blocos de
+  comparação a esses canais. Grupos também podem ser criados na própria tela,
+  sem passar pela planilha — ver [`decisions/0010`](decisions/0010-selecao-por-grupo.md)
 - o grupo é comparado sem diferenciar maiúsculas nem espaços nas bordas —
   `Pago` e `pago ` são o mesmo grupo; o nome exibido é o da primeira ocorrência
 - o grupo entra na tela na posição do seu primeiro canal pela `order`, e os
   canais dele vêm juntos, mesmo que a `order` os intercale
-- há cinco cores de grupo; do sexto grupo em diante a cor é cinza neutro, nunca
-  repetida. Canal sem grupo conta como um grupo de um canal só
+- o grupo **não** define cor: a cor é por canal, nessa ordem — cinco cores, e
+  cinza do sexto canal em diante
 
 O dashboard foi desenhado para até **15 canais**. Acima disso nada quebra, mas a
 página fica longa. Ver [`decisions/0009`](decisions/0009-mais-canais-e-grupos.md).

@@ -1,16 +1,17 @@
 import type { ChannelCatalog } from './data/channel-catalog'
 
 /**
- * Slots categóricos de cor, um por **grupo** de canais.
+ * Slots categóricos de cor, um por **canal**, pela ordem canônica.
  *
  * Nomes de variável CSS, nunca hex: os valores vivem em `globals.css`, foram
  * validados para daltonismo e contraste nos dois modos, e trocar um exige
  * revalidar a paleta inteira.
  *
- * A cor diz a família do canal; o nome diz qual canal é. Com dez ou quinze
- * canais não existe paleta categórica que se leia com segurança, então nenhum
- * bloco da tela identifica canal só por cor — todo ponto de cor vem com rótulo.
- * Ver docs/decisions/0009.
+ * São só cinco slots: do sexto canal em diante, cinza. Por isso nenhum bloco da
+ * tela identifica canal só por cor — todo ponto de cor vem com o nome ao lado.
+ * A cor segue o canal e não o grupo porque grupos personalizados podem se
+ * sobrepor: um canal em dois grupos não teria cor definida. Ver
+ * docs/decisions/0010.
  */
 export const SERIES_COLORS = [
   'var(--series-1)',
@@ -21,27 +22,25 @@ export const SERIES_COLORS = [
 ] as const
 
 /**
- * Cor de quem não tem slot: grupo além do quinto, ou canal fora do catálogo.
+ * Cor de quem não tem slot: canal além do quinto, ou fora do catálogo.
  *
  * Nunca se recicla um slot. Cor repetida mentiria sobre identidade; cinza diz
- * "este grupo não tem cor própria", que é a verdade.
+ * "este canal não tem cor própria", que é a verdade.
  */
 export const NEUTRAL_SERIES_COLOR = 'var(--ink-muted)'
 
 /**
- * Cor de cada canal do catálogo, pelo slot do seu grupo.
+ * Cor de cada canal do catálogo, pela posição dele na ordem canônica.
  *
- * O slot é a posição do grupo na ordem canônica, não a posição do canal em
- * ranking nenhum: filtrar ou ordenar uma tabela não repinta nada.
+ * Calculada sobre o catálogo inteiro, nunca sobre a lista que está na tela:
+ * escolher um grupo ou ordenar uma tabela não repinta nenhum canal.
  */
 export function channelColors(catalog: ChannelCatalog): Record<string, string> {
-  const slotOf = new Map(catalog.groups.map((group, index) => [group.key, index]))
-
   return Object.fromEntries(
-    catalog.channels.map((entry) => {
-      const slot = slotOf.get(entry.group.key) ?? Number.POSITIVE_INFINITY
-      return [entry.channel, SERIES_COLORS[slot] ?? NEUTRAL_SERIES_COLOR]
-    }),
+    catalog.channels.map((entry, index) => [
+      entry.channel,
+      SERIES_COLORS[index] ?? NEUTRAL_SERIES_COLOR,
+    ]),
   )
 }
 

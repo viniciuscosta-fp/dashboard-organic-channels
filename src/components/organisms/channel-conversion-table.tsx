@@ -12,8 +12,10 @@ interface ChannelConversionTableProps {
   ratio: ConversionRatio
   /** Uma linha por canal, na ordem do cadastro. */
   rows: ChannelRatios[]
-  /** Consolidado de todos os canais, exibido no rodapé. */
+  /** Consolidado das linhas exibidas, no rodapé. */
   total: ChannelRatios
+  /** Rótulo do rodapé: "Consolidado", ou o total do grupo selecionado. */
+  totalLabel?: string
   weeks: ConversionWeek[]
   delta: ConversionWeekDelta
   /** Cor de cada canal, pelo slot do grupo, para casar com os gráficos. */
@@ -44,6 +46,7 @@ export function ChannelConversionTable({
   colors,
   labels,
   highlight = null,
+  totalLabel = 'Consolidado',
 }: ChannelConversionTableProps) {
   const definition = FUNNEL_RATIO_DEFINITIONS[ratio]
   const gapNote = describeGap(total.ratios[ratio], ratio, labels)
@@ -116,7 +119,7 @@ export function ChannelConversionTable({
           <tfoot className="border-hairline border-t tabular-nums">
             <ConversionRow
               comparison={total.ratios[ratio]}
-              label="Consolidado"
+              label={totalLabel}
               weeks={weeks.map((week) => ({ value: week.total, base: week.totalBase }))}
               weekDelta={delta.total}
               provisional={delta.provisional}

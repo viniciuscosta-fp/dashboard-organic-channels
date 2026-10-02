@@ -531,6 +531,76 @@ describe('computeAdherence', () => {
     })
   })
 
+  describe('grupo em foco', () => {
+    const tresCanais = {
+      snapshots: [
+        ...daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),
+        ...daily('2026-08-01', '2026-08-14', 'direct', { customers: 3 }),
+        ...daily('2026-08-01', '2026-08-14', 'paid', { customers: 2 }),
+      ],
+      goals: [...goals, goal('2026-08', 'direct', 42), goal('2026-08', 'paid', 30)],
+      range: AGOSTO,
+    }
+
+    it('sem foco, o escopo é o consolidado', () => {
+      const relatorio = computeAdherence(tresCanais)
+
+      expect(relatorio.scope).toBe(relatorio.total)
+    })
+
+    it('com canal em foco, o escopo é a linha do canal', () => {
+      const relatorio = computeAdherence({ ...tresCanais, focusChannel: 'direct' })
+
+      expect(relatorio.scope).toEqual(relatorio.byChannel.find((e) => e.channel === 'direct'))
+    })
+
+    it('soma realizado, meta e ritmo dos canais do grupo', () => {
+      const { scope } = computeAdherence({ ...tresCanais, focusChannels: ['direct', 'paid'] })
+      const metric = customers(scope)
+
+      expect(metric.actual).toBe(50)
+      expect(metric.goalPeriod).toBe(72)
+      expect(metric.recentDailyRate).toBeCloseTo(5)
+    })
+
+    it('a curva do grupo sai do mesmo cálculo que os cartões', () => {
+      const relatorio = computeAdherence({ ...tresCanais, focusChannels: ['direct', 'paid'] })
+      const cartao = customers(relatorio.scope)
+      const curva = relatorio.burnup.customers
+
+      expect(curva.findLast((p) => p.actual !== null)!.actual).toBe(cartao.actual)
+      expect(curva.at(-1)!.goal).toBeCloseTo(cartao.goalPeriod)
+      expect(curva.at(-1)!.projected).toBeCloseTo(cartao.projection!)
+      expect(relatorio.burnupChannel).toBeNull()
+    })
+
+    it('não recorta o universo: total e linhas por canal não mudam', () => {
+      const consolidado = computeAdherence(tresCanais)
+      const comGrupo = computeAdherence({ ...tresCanais, focusChannels: ['direct', 'paid'] })
+
+      expect(comGrupo.total).toEqual(consolidado.total)
+      expect(comGrupo.byChannel).toEqual(consolidado.byChannel)
+    })
+
+    it('tem precedência sobre o canal em foco', () => {
+      const { scope } = computeAdherence({
+        ...tresCanais,
+        focusChannel: 'organic-search',
+        focusChannels: ['direct', 'paid'],
+      })
+
+      expect(customers(scope).actual).toBe(50)
+    })
+
+    it('ignora canal desconhecido e, sem nenhum conhecido, cai no consolidado', () => {
+      const parcial = computeAdherence({ ...tresCanais, focusChannels: ['direct', 'fantasma'] })
+      const vazio = computeAdherence({ ...tresCanais, focusChannels: ['fantasma'] })
+
+      expect(customers(parcial.scope).actual).toBe(30)
+      expect(vazio.scope).toBe(vazio.total)
+    })
+  })
+
   it('canal cadastrado, sem dado e sem meta, aparece zerado', () => {
     const { byChannel } = computeAdherence({
       snapshots: daily('2026-08-01', '2026-08-14', 'organic-search', { customers: 1 }),

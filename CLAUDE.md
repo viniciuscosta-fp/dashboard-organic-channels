@@ -130,7 +130,7 @@ Receita usa schema decimal e formatação em reais; contagens são inteiras. Use
 ## Cores e gráficos
 
 Nunca escreva hex em componente — use os tokens de `src/app/globals.css`.
-`--series-1..5` identificam **grupos** de canais, sempre via `channelColors`;
+`--series-1..5` identificam **canais**, sempre via `channelColors`;
 `--stage-1..3`, etapas do funil. O dashboard é desenhado para até 15 canais:
 cor nunca identifica canal sozinha, o nome sempre vai junto (decisão 0009). A exceção
 é a paleta de status em `status-badge.tsx`, fixa e independente de tema.

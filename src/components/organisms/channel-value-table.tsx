@@ -10,8 +10,10 @@ import { colorOf } from '@/lib/series-colors'
 interface ChannelValueTableProps {
   /** Uma linha por canal, na ordem do cadastro. */
   rows: ChannelRatios[]
-  /** Consolidado de todos os canais, exibido no rodapé. */
+  /** Consolidado das linhas exibidas, no rodapé. */
   total: ChannelRatios
+  /** Rótulo do rodapé: "Consolidado", ou o total do grupo selecionado. */
+  totalLabel?: string
   /** Cor de cada canal, pelo slot do grupo, para casar com os gráficos. */
   colors: Record<string, string>
   labels: Record<string, string>
@@ -41,6 +43,7 @@ export function ChannelValueTable({
   colors,
   labels,
   highlight = null,
+  totalLabel = 'Consolidado',
 }: ChannelValueTableProps) {
   return (
     <div className="space-y-3">
@@ -93,7 +96,7 @@ export function ChannelValueTable({
             <ValueRow
               ticket={total.ratios['average-ticket']}
               perMql={total.ratios['revenue-per-mql']}
-              label="Consolidado"
+              label={totalLabel}
               emphasis
             />
           </tfoot>

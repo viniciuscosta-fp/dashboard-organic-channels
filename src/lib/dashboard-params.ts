@@ -1,3 +1,4 @@
+import { parseCustomGroups, serializeCustomGroups, type CustomGroup } from './channel-groups'
 import { isConversionRatio, isMetric, type ConversionRatio, type Metric } from './data/types'
 import {
   parsePeriod,
@@ -11,9 +12,10 @@ import {
 /**
  * Estado do dashboard que mora na URL.
  *
- * São três eixos independentes — período, métrica do burn-up e transição do
- * funil — e cada controle da tela governa um deles. O problema que este módulo
- * resolve é o de preservar os outros dois: um controle que esquece de repassar
+ * São eixos independentes — período, métrica do burn-up, transição do funil,
+ * seleção (um canal ou um grupo) e grupos personalizados — e cada controle da
+ * tela governa um deles. O problema que este módulo resolve é o de preservar os
+ * outros: um controle que esquece de repassar
  * um parâmetro reseta silenciosamente uma escolha do usuário, e essa é a
  * regressão mais fácil de introduzir e mais difícil de notar.
  *
@@ -39,10 +41,17 @@ export interface DashboardParams {
    * depois. Quem fecha a validação é `resolveChannelParam`, na rota.
    */
   channel: string | null
+  /**
+   * Grupo selecionado, pelo nome, ou `null`. Também sai **cru**: quem valida é
+   * `resolveGroupParam`, na rota, contra os grupos que existem.
+   */
+  group: string | null
+  /** Grupos criados na tela. A URL é a persistência deles. */
+  customGroups: CustomGroup[]
 }
 
 /** Qual eixo um controle governa — e portanto omite dos próprios links. */
-export type DashboardControl = 'periodo' | 'metrica' | 'taxa' | 'canal'
+export type DashboardControl = 'periodo' | 'metrica' | 'taxa' | 'canal' | 'grupo' | 'grupos'
 
 /**
  * Lê o estado do dashboard a partir dos parâmetros da URL.
@@ -59,6 +68,7 @@ export function parseDashboardParams(
   const metric = single(searchParams.metrica)
   const ratio = single(searchParams.taxa)
   const channel = single(searchParams.canal)?.trim()
+  const group = single(searchParams.grupo)?.trim()
 
   return {
     range,
@@ -66,6 +76,8 @@ export function parseDashboardParams(
     metric: isMetric(metric) ? metric : DEFAULT_METRIC,
     ratio: isConversionRatio(ratio) ? ratio : DEFAULT_RATIO,
     channel: channel ? channel : null,
+    group: group ? group : null,
+    customGroups: parseCustomGroups(single(searchParams.grupos)),
   }
 }
 
@@ -108,6 +120,11 @@ export function dashboardSearchParams(
   // Consolidado é a ausência do parâmetro, não um valor especial: assim a URL
   // do estado padrão é a URL limpa.
   if (!excluded.has('canal') && params.channel !== null) query.canal = params.channel
+  if (!excluded.has('grupo') && params.group !== null) query.grupo = params.group
+
+  if (!excluded.has('grupos') && params.customGroups.length > 0) {
+    query.grupos = serializeCustomGroups(params.customGroups)
+  }
 
   return query
 }

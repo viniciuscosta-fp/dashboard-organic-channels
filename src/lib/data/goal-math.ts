@@ -157,11 +157,16 @@ export interface AdherenceReport {
   total: ChannelAdherence
   byChannel: ChannelAdherence[]
   /**
-   * Curva acumulada por métrica, no escopo pedido em `focusChannel` — o
-   * consolidado quando não há canal em foco.
+   * Aderência do escopo pedido: o canal em `focusChannel`, a soma dos canais em
+   * `focusChannels`, ou o consolidado. É o que alimenta os cartões do topo.
+   */
+  scope: ChannelAdherence
+  /**
+   * Curva acumulada por métrica, no mesmo escopo de `scope` — sai do mesmo
+   * objeto, para curva e cartões nunca discordarem.
    */
   burnup: Record<Metric, BurnupPoint[]>
-  /** Canal a que a curva se refere. `null` quando ela é do consolidado. */
+  /** Canal a que a curva se refere. `null` quando ela é do consolidado ou de um grupo. */
   burnupChannel: string | null
   /** União dos meses sem meta, em qualquer canal ou métrica. */
   missingGoalMonths: IsoMonth[]
@@ -494,6 +499,15 @@ export interface AdherenceInput {
    * que a curva mostra, não recortar o universo do cálculo.
    */
   focusChannel?: string | null
+  /**
+   * Conjunto de canais — um grupo — cuja **soma** a curva e `scope` mostram. A
+   * meta do grupo é a soma das metas dos canais dele. Tem precedência sobre
+   * `focusChannel`; vazio ou sem nenhum canal conhecido equivale a ausente.
+   *
+   * Como `focusChannel`, não recorta o universo: `total` e `byChannel` seguem
+   * completos. Ver docs/decisions/0010.
+   */
+  focusChannels?: readonly string[] | null
 }
 
 export function computeAdherence({
@@ -502,6 +516,7 @@ export function computeAdherence({
   range,
   channels: knownChannels,
   focusChannel = null,
+  focusChannels = null,
 }: AdherenceInput): AdherenceReport {
   const inPeriod = snapshots.filter(
     (snapshot) => snapshot.date >= range.from && snapshot.date <= range.to,
@@ -558,23 +573,44 @@ export function computeAdherence({
   // A curva sai do **mesmo** `ChannelAdherence` que alimenta os cartões de KPI.
   // Recalcular o ritmo aqui seria a forma mais fácil de a curva e o número
   // acima dela passarem a discordar.
+  const groupChannels = channels.filter((channel) => focusChannels?.includes(channel))
+  const group: ChannelAdherence | null =
+    groupChannels.length === 0
+      ? null
+      : {
+          channel: 'grupo',
+          metrics: METRICS.map((metric) =>
+            buildMetricAdherence(
+              inPeriod.filter((snapshot) => groupChannels.includes(snapshot.channel)),
+              snapshots.filter((snapshot) => groupChannels.includes(snapshot.channel)),
+              index,
+              groupChannels,
+              metric,
+              timing,
+            ),
+          ),
+        }
+
   const focus =
-    focusChannel === null
+    group !== null || focusChannel === null
       ? null
       : (byChannel.find((entry) => entry.channel === focusChannel) ?? null)
 
-  const burnupSnapshots = focus
-    ? inPeriod.filter((snapshot) => snapshot.channel === focus.channel)
-    : inPeriod
-  const burnupChannels = focus ? [focus.channel] : channels
+  const scopeChannels = group ? groupChannels : focus ? [focus.channel] : channels
+  const scope = group ?? focus ?? total
+
+  const burnupSnapshots =
+    scope === total
+      ? inPeriod
+      : inPeriod.filter((snapshot) => scopeChannels.includes(snapshot.channel))
 
   const burnup = Object.fromEntries(
-    (focus ?? total).metrics.map((metric) => [
+    scope.metrics.map((metric) => [
       metric.metric,
       buildBurnup(
         burnupSnapshots,
         index,
-        burnupChannels,
+        scopeChannels,
         metric.metric,
         timing,
         metric.projection === null ? null : metric.recentDailyRate,
@@ -586,6 +622,7 @@ export function computeAdherence({
     timing,
     total,
     byChannel,
+    scope,
     burnup,
     burnupChannel: focus?.channel ?? null,
     missingGoalMonths,

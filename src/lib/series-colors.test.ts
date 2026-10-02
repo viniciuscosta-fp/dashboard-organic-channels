@@ -17,7 +17,7 @@ function channels(count: number, groupOf: (index: number) => string | undefined)
 }
 
 describe('channelColors', () => {
-  it('sem grupos, dá a cada canal o próprio slot, na ordem do cadastro', () => {
+  it('dá a cada canal o próprio slot, na ordem canônica', () => {
     const colors = channelColors(
       resolveChannels(
         channels(3, () => undefined),
@@ -25,57 +25,51 @@ describe('channelColors', () => {
       ),
     )
 
-    expect(Object.values(colors)).toEqual(SERIES_COLORS.slice(0, 3))
+    expect(colors).toEqual({
+      canal_1: SERIES_COLORS[0],
+      canal_2: SERIES_COLORS[1],
+      canal_3: SERIES_COLORS[2],
+    })
   })
 
-  it('dá a mesma cor aos canais de um grupo e cores diferentes a grupos diferentes', () => {
+  it('não repete cor entre canais do mesmo grupo', () => {
     const colors = channelColors(
       resolveChannels(
-        channels(15, (index) => ['Orgânico', 'Pago', 'Social'][index % 3]),
+        channels(3, () => 'Pago'),
         [],
       ),
     )
 
-    const byGroup = [0, 1, 2].map(
-      (group) =>
-        new Set(
-          Object.entries(colors)
-            .filter(([channel]) => (Number(channel.split('_')[1]) - 1) % 3 === group)
-            .map(([, color]) => color),
-        ),
-    )
-
-    expect(byGroup.every((set) => set.size === 1)).toBe(true)
-    expect(new Set(byGroup.map((set) => [...set][0])).size).toBe(3)
+    expect(new Set(Object.values(colors)).size).toBe(3)
   })
 
-  it('com 15 canais em até cinco grupos, nenhum canal fica sem cor', () => {
-    const colors = channelColors(
-      resolveChannels(
-        channels(15, (index) => `Grupo ${Math.floor(index / 3)}`),
-        [],
-      ),
-    )
+  it('segue a ordem canônica, que junta os canais de um grupo', () => {
+    // canal_2 é de outro grupo e vai para depois dos dois canais de "A".
+    const registered = channels(3, (index) => (index === 1 ? 'B' : 'A'))
+    const colors = channelColors(resolveChannels(registered, []))
 
-    expect(Object.keys(colors)).toHaveLength(15)
-    expect(Object.values(colors)).not.toContain(NEUTRAL_SERIES_COLOR)
+    expect(colors.canal_3).toBe(SERIES_COLORS[1])
+    expect(colors.canal_2).toBe(SERIES_COLORS[2])
   })
 
-  it('nunca recicla slot: do sexto grupo em diante, a cor é neutra', () => {
+  it('nunca recicla slot: do sexto canal em diante, a cor é neutra', () => {
     const colors = channelColors(
       resolveChannels(
-        channels(7, () => undefined),
+        channels(15, () => undefined),
         [],
       ),
     )
 
     expect(Object.values(colors).slice(0, 5)).toEqual([...SERIES_COLORS])
-    expect(colors.canal_6).toBe(NEUTRAL_SERIES_COLOR)
-    expect(colors.canal_7).toBe(NEUTRAL_SERIES_COLOR)
+    expect(
+      Object.values(colors)
+        .slice(5)
+        .every((color) => color === NEUTRAL_SERIES_COLOR),
+    ).toBe(true)
   })
 
-  it('não repinta canal quando outro é filtrado do dado', () => {
-    const registered = channels(4, (index) => (index < 2 ? 'Orgânico' : 'Pago'))
+  it('não repinta canal quando outro some do dado', () => {
+    const registered = channels(4, () => undefined)
 
     const antes = channelColors(resolveChannels(registered, ['canal_1', 'canal_3']))
     const depois = channelColors(resolveChannels(registered, ['canal_3']))

@@ -171,10 +171,10 @@ calculadas uma vez em `page.tsx`:
 - **Ordem canônica.** `resolveChannels` junta os canais de um grupo na posição do
   primeiro deles pela `order`. É a ordem de seletor, painéis e tabelas de
   conversão e valor, e a base de `groupSections`, que divide a tela em seções
-- **Cor por grupo.** `channelColors` dá um slot de `--series-1..5` por grupo, e
-  cinza do sexto em diante — nunca recicla. Canal sem grupo é um grupo de um só,
-  então a planilha sem a coluna se comporta como antes. A cor diz a família; o
-  nome, sempre ao lado, diz o canal
+- **Cor por canal.** `channelColors` dá um slot de `--series-1..5` por canal,
+  na ordem canônica, e cinza do sexto em diante — nunca recicla. Calculada sobre
+  o catálogo inteiro, então escolher um grupo não repinta ninguém. O nome, sempre
+  ao lado, é o que identifica o canal
 - **Urgência.** `sortByUrgency` ordena a tabela de aderência pelo pior status de
   cada canal, e `summarizeChannelStatus` alimenta o bloco "Situação dos canais",
   que responde "quem está em risco" sem rolar quarenta linhas
@@ -183,13 +183,33 @@ A evolução por canal é _small multiples_ — um painel por canal, com escala
 própria — e não um gráfico com uma linha por canal. Ver
 [`decisions/0009`](decisions/0009-mais-canais-e-grupos.md).
 
+### Seleção por grupo
+
+Além de um canal, dá para selecionar um **grupo**: os da planilha aparecem
+prontos, e outros podem ser criados na tela. `channel-groups.ts` reconcilia os
+dois contra o catálogo (`selectableGroups`) e valida a criação
+(`addCustomGroup`).
+
+Grupo personalizado mora **na URL** (`?grupos=nome~canal,canal|…`), não num
+banco: o link é a persistência. O formulário de criação é `GET` para
+`/grupos`, um route handler que devolve um 303 para o dashboard com o grupo
+gravado e selecionado — sem JavaScript, como o resto dos controles.
+
+Com grupo selecionado, `computeAdherence` recebe `focusChannels` e devolve em
+`scope` a soma dos canais do grupo contra a soma das metas deles; a curva sai do
+mesmo objeto. `total` e `byChannel` seguem completos. Os blocos de comparação
+mostram só o grupo — diferente do canal único, que os deixa completos. Ver
+[`decisions/0010`](decisions/0010-selecao-por-grupo.md).
+
 Nada disso toca a camada de cálculo nem o cache: `computeAdherence` e as demais
 funções já tratavam canais como lista de tamanho livre.
 
 ## Estado na URL
 
-São quatro eixos independentes: período (`?periodo=` ou `?de=&ate=`), métrica do
-burn-up (`?metrica=`), transição do funil (`?taxa=`) e canal em foco (`?canal=`).
+São cinco eixos independentes: período (`?periodo=` ou `?de=&ate=`), métrica do
+burn-up (`?metrica=`), transição do funil (`?taxa=`), seleção — canal em foco
+(`?canal=`) ou grupo (`?grupo=`), nunca os dois — e grupos personalizados
+(`?grupos=`).
 `parsePeriod` é a autoridade sobre o primeiro; `parseDashboardParams` compõe
 todos.
 
