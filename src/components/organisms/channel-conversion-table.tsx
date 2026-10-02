@@ -6,7 +6,7 @@ import {
 import type { ConversionWeek, ConversionWeekDelta } from '@/lib/data/funnel-view'
 import { FUNNEL_RATIO_DEFINITIONS, METRIC_LABELS, type ConversionRatio } from '@/lib/data/types'
 import { formatCount, formatOptionalRatio, formatPoints } from '@/lib/format'
-import { seriesColorOf } from '@/lib/series-colors'
+import { colorOf } from '@/lib/series-colors'
 
 interface ChannelConversionTableProps {
   ratio: ConversionRatio
@@ -16,8 +16,8 @@ interface ChannelConversionTableProps {
   total: ChannelRatios
   weeks: ConversionWeek[]
   delta: ConversionWeekDelta
-  /** Ordem canônica dos canais, para a cor casar com a dos gráficos. */
-  order: string[]
+  /** Cor de cada canal, pelo slot do grupo, para casar com os gráficos. */
+  colors: Record<string, string>
   labels: Record<string, string>
   /** Canal em foco. A tabela segue completa; a linha dele é que se destaca. */
   highlight?: string | null
@@ -41,7 +41,7 @@ export function ChannelConversionTable({
   total,
   weeks,
   delta,
-  order,
+  colors,
   labels,
   highlight = null,
 }: ChannelConversionTableProps) {
@@ -101,7 +101,7 @@ export function ChannelConversionTable({
                 key={row.channel}
                 comparison={row.ratios[ratio]}
                 label={labels[row.channel] ?? row.channel}
-                color={seriesColorOf(order, row.channel)}
+                color={colorOf(colors, row.channel)}
                 weeks={weeks.map((week) => ({
                   value: week.channels[row.channel] ?? null,
                   base: week.bases[row.channel] ?? 0,

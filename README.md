@@ -109,7 +109,7 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\
 FUNNEL_SHEET_ID=<trecho entre /d/ e /edit na URL>
 FUNNEL_SHEET_RANGE=funil!A:F
 GOALS_SHEET_RANGE=metas!A:D
-CHANNELS_SHEET_RANGE=canais!A:C
+CHANNELS_SHEET_RANGE=canais!A:D
 ```
 
 A planilha precisa de **três abas** — `funil`, `metas` e `canais` — no formato de

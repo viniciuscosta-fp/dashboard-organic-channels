@@ -32,7 +32,9 @@ rede.
 
 Nunca escreva hex em componente. Use os tokens de `globals.css`:
 
-- `--series-1..3` para canais — a cor segue o canal, nunca a posição no ranking
+- `--series-1..5` para **grupos** de canais, sempre via `channelColors` /
+  `colorOf` de `lib/series-colors.ts` — a cor segue o grupo, nunca a posição no
+  ranking, e nunca é a única pista: todo ponto de cor tem o nome do canal ao lado
 - `--stage-1..3` para etapas do funil, na ordem do funil
 - `--ink`, `--ink-secondary`, `--ink-muted` para texto; nunca a cor da série
 
@@ -42,7 +44,9 @@ exige revalidar a paleta inteira, não só o slot alterado.
 ## Gráficos
 
 Todo gráfico leva tooltip no hover, e legenda sempre que houver duas séries ou
-mais — identidade de série nunca depende só da cor. Nada de eixo duplo: duas
+mais — identidade de série nunca depende só da cor. Comparação entre canais é
+_small multiples_ (um painel por canal, com o nome no título), não um gráfico
+com uma linha por canal: com dez ou quinze canais isso vira um novelo. Nada de eixo duplo: duas
 medidas de escalas diferentes viram dois gráficos.
 
 ## Acessibilidade

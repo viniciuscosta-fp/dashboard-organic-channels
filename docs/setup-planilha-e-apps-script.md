@@ -56,11 +56,13 @@ No editor do Apps Script, selecione a função **`prepararPlanilha`** e clique e
 _Executar_. Autorize os acessos quando o Google pedir — é a primeira execução.
 
 Isso cria as três abas com o cabeçalho certo, formata a coluna `date` como texto
-simples e preenche o cadastro dos cinco canais.
+simples e preenche o cadastro com os canais de `CANAIS`, já com o grupo.
 
 É seguro rodar de novo: aba existente não é recriada e dado existente não é
 tocado. Rodar depois de acrescentar um canal em `CANAIS` sincroniza a aba
-`canais` sem mexer nos rótulos que você tenha ajustado.
+`canais` sem mexer nos rótulos, ordens e grupos que você tenha ajustado. Numa
+aba `canais` criada antes da coluna `group`, o script acrescenta o cabeçalho na
+coluna D.
 
 > **Por que não importar um xlsx pronto?** Porque a coluna `date` precisa ser
 > texto simples, e conversão de arquivo não garante isso. Como célula de data, a
@@ -68,8 +70,9 @@ tocado. Rodar depois de acrescentar um canal em `CANAIS` sincroniza a aba
 > rejeita a planilha inteira. Criar pelo script elimina esse risco.
 
 Confira que as abas `funil`, `metas` e `canais` apareceram, e que a `canais` tem
-cinco linhas. A coluna `label` é o nome que aparece na tela — mudar ali muda o
-dashboard sem precisar de deploy.
+uma linha por canal de `CANAIS`. A coluna `label` é o nome que aparece na tela, e
+`group` é a família que agrupa e colore o canal — mudar ali muda o dashboard sem
+precisar de deploy.
 
 ## 3. Dar acesso ao dashboard
 
@@ -85,14 +88,14 @@ O dashboard só lê. Nenhuma rota da aplicação escreve na planilha.
 
 ## 4. Carga histórica, em etapas
 
-O roteiro é fatiado de propósito: um erro de mapeamento aparece em cinco linhas
-em vez de novecentas. Não pule etapas — cada uma valida algo diferente.
+O roteiro é fatiado de propósito: um erro de mapeamento aparece em uma linha por
+canal em vez de milhares. Não pule etapas — cada uma valida algo diferente.
 
 ### 4.1 Um dia
 
 No editor, rode `coletarOntem()`. Autorize os acessos quando pedido.
 
-Confira na aba `funil`: devem ter surgido **cinco linhas**, uma por canal, com a
+Confira na aba `funil`: devem ter surgido **uma linha por canal** de `CANAIS`, com a
 data de ontem. Compare os quatro números de um canal com o que a HubSpot mostra
 para aquele dia.
 
@@ -103,7 +106,7 @@ baterem, pare e investigue antes de seguir.
 
 Rode `coletarOntem()` outra vez.
 
-Continua com cinco linhas, não dez. Este é o teste do upsert — o que garante
+Continua com o mesmo número de linhas, não o dobro. Este é o teste do upsert — o que garante
 que reexecutar qualquer intervalo é seguro.
 
 ### 4.3 Uma semana
@@ -119,8 +122,9 @@ var BACKFILL_FIM = '2026-08-09'
 Ajuste as datas, salve, selecione **`rodarBackfill`** na lista de funções e
 execute.
 
-Confira o volume (7 dias × 5 canais = 35 linhas) e se algum dia ficou de fora.
-Nesta escala tudo cabe numa execução.
+Confira o volume (7 dias × número de canais — 70 linhas com dez canais) e se
+algum dia ficou de fora. Nesta escala tudo cabe numa execução; com mais canais,
+o backfill de um mês tende a precisar da retomada automática.
 
 ### 4.4 Um mês
 
@@ -168,7 +172,7 @@ month     channel        metric      target
 2026-08   organic_site   customers   24
 ```
 
-São até 20 combinações por mês (5 canais × 4 métricas). **Preencha só o que tem
+São até quatro linhas por canal e mês (40 com dez canais, 60 com quinze). **Preencha só o que tem
 meta de verdade.** Métrica sem linha aparece como "sem meta" no dashboard — um
 estado neutro, nunca como meta zero, que renderia 100% de atingimento contra
 nada.

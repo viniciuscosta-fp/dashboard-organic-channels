@@ -76,8 +76,8 @@ selecionado, proporcional aos dias úteis de cada mês — ver
 Não cadastre meta por semana nem por período parcial.
 
 **Mês sem linha não vira meta zero.** O dashboard sinaliza a ausência em vez de
-mostrar 100% de atingimento contra nada. São até 20 combinações por mês:
-preencha só o que tem meta de verdade.
+mostrar 100% de atingimento contra nada. São até quatro linhas por canal e mês —
+40 com dez canais, 60 com quinze: preencha só o que tem meta de verdade.
 
 Linhas duplicadas do mesmo mês, canal e métrica são **somadas**, não
 sobrescritas.
@@ -86,24 +86,42 @@ sobrescritas.
 
 ## Aba `canais`
 
-Uma linha por canal. Intervalo em `CHANNELS_SHEET_RANGE` (padrão `canais!A:C`).
+Uma linha por canal. Intervalo em `CHANNELS_SHEET_RANGE` (padrão `canais!A:D`).
 
-| Coluna    | Formato                      | Exemplo                      |
-| --------- | ---------------------------- | ---------------------------- |
-| `channel` | chave enviada ao webhook     | `blog_fluencypass`           |
-| `label`   | nome exibido no dashboard    | `Organic Search (Blog - FP)` |
-| `order`   | inteiro; menor aparece antes | `2`                          |
+| Coluna    | Formato                                  | Exemplo                      |
+| --------- | ---------------------------------------- | ---------------------------- |
+| `channel` | chave enviada ao webhook                 | `blog_fluencypass`           |
+| `label`   | nome exibido no dashboard                | `Organic Search (Blog - FP)` |
+| `order`   | inteiro; menor aparece antes             | `2`                          |
+| `group`   | **opcional**; família do canal, ou vazio | `Orgânico`                   |
 
 Esta aba existe para que a taxonomia de canais — quais existem, como se chamam
-na tela, em que ordem aparecem — seja editável por quem toma essa decisão, sem
-depender de um commit.
+na tela, em que ordem aparecem, a que família pertencem — seja editável por quem
+toma essa decisão, sem depender de um commit.
+
+**`group` é opcional, na coluna e na célula.** Sem a coluna, ou com
+`CHANNELS_SHEET_RANGE` ainda em `canais!A:C`, o dashboard funciona sem agrupar:
+cada canal fica com a própria cor, como antes. Com ela:
+
+- canais do mesmo grupo dividem a **cor** e a **seção** no seletor e na evolução
+  por canal; o nome do canal continua sendo o que o identifica
+- o grupo é comparado sem diferenciar maiúsculas nem espaços nas bordas —
+  `Pago` e `pago ` são o mesmo grupo; o nome exibido é o da primeira ocorrência
+- o grupo entra na tela na posição do seu primeiro canal pela `order`, e os
+  canais dele vêm juntos, mesmo que a `order` os intercale
+- há cinco cores de grupo; do sexto grupo em diante a cor é cinza neutro, nunca
+  repetida. Canal sem grupo conta como um grupo de um canal só
+
+O dashboard foi desenhado para até **15 canais**. Acima disso nada quebra, mas a
+página fica longa. Ver [`decisions/0009`](decisions/0009-mais-canais-e-grupos.md).
 
 **Canal cadastrado sem dado no período aparece zerado**: estar em zero é
 informação. **Canal com dado e sem cadastro também aparece**, com a chave crua
 como rótulo e um aviso na tela.
 
-Incluir um canal novo são duas linhas: uma aqui e a chave na constante `CANAIS`
-de `scripts/apps-script/coleta-diaria.js`.
+Incluir um canal novo são duas linhas: uma aqui e a chave, com rótulo e grupo,
+na constante `CANAIS` de `scripts/apps-script/coleta-diaria.js`. O webhook precisa
+aceitar a chave — sem isso a coleta registra erro e não grava o canal.
 
 ---
 

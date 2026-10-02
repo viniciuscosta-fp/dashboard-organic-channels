@@ -34,7 +34,12 @@ interface ChannelProfile {
   averageTicket: number
 }
 
-/** As cinco chaves aceitas pelo webhook de métricas por canal. */
+/**
+ * Os dez canais de `MOCK_CHANNELS`: os cinco primeiros com as chaves aceitas
+ * pelo webhook, os cinco últimos fictícios, para exercitar o layout com mais
+ * canais. Os volumes variam de propósito — um canal pequeno ao lado de um
+ * grande é o caso que um gráfico de escala única esconde.
+ */
 const CHANNELS: ChannelProfile[] = [
   {
     name: 'organic_site',
@@ -75,6 +80,46 @@ const CHANNELS: ChannelProfile[] = [
     opportunityRate: 0.28,
     customerRate: 0.3,
     averageTicket: 2800,
+  },
+  {
+    name: 'paid_search',
+    baseMqls: 9,
+    dailyGrowth: 0.0004,
+    opportunityRate: 0.25,
+    customerRate: 0.27,
+    averageTicket: 2500,
+  },
+  {
+    name: 'paid_social',
+    baseMqls: 6,
+    dailyGrowth: 0.0006,
+    opportunityRate: 0.18,
+    customerRate: 0.22,
+    averageTicket: 2100,
+  },
+  {
+    name: 'paid_display',
+    baseMqls: 3,
+    dailyGrowth: 0.0002,
+    opportunityRate: 0.15,
+    customerRate: 0.2,
+    averageTicket: 1900,
+  },
+  {
+    name: 'social_instagram',
+    baseMqls: 2.5,
+    dailyGrowth: 0.0008,
+    opportunityRate: 0.2,
+    customerRate: 0.25,
+    averageTicket: 2000,
+  },
+  {
+    name: 'social_youtube',
+    baseMqls: 1.5,
+    dailyGrowth: 0.0012,
+    opportunityRate: 0.22,
+    customerRate: 0.27,
+    averageTicket: 2300,
   },
 ]
 

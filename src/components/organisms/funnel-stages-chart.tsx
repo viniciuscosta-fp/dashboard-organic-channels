@@ -34,7 +34,7 @@ interface FunnelStagesChartProps {
  */
 export function FunnelStagesChart({ stages }: FunnelStagesChartProps) {
   return (
-    // Altura casada com o gráfico de linhas ao lado (h-64 mais a legenda).
+    // Altura casada com o burn-up ao lado (também h-72).
     <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart

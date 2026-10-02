@@ -5,15 +5,15 @@ import {
 } from '@/lib/data/funnel-efficiency'
 import { FUNNEL_RATIO_DEFINITIONS, METRIC_LABELS } from '@/lib/data/types'
 import { formatCount, formatRatioDelta, formatRatioValue } from '@/lib/format'
-import { seriesColorOf } from '@/lib/series-colors'
+import { colorOf } from '@/lib/series-colors'
 
 interface ChannelValueTableProps {
   /** Uma linha por canal, na ordem do cadastro. */
   rows: ChannelRatios[]
   /** Consolidado de todos os canais, exibido no rodapé. */
   total: ChannelRatios
-  /** Ordem canônica dos canais, para a cor casar com a dos gráficos. */
-  order: string[]
+  /** Cor de cada canal, pelo slot do grupo, para casar com os gráficos. */
+  colors: Record<string, string>
   labels: Record<string, string>
   /** Canal em foco. A tabela segue completa; a linha dele é que se destaca. */
   highlight?: string | null
@@ -38,7 +38,7 @@ const POR_MQL = FUNNEL_RATIO_DEFINITIONS['revenue-per-mql']
 export function ChannelValueTable({
   rows,
   total,
-  order,
+  colors,
   labels,
   highlight = null,
 }: ChannelValueTableProps) {
@@ -83,7 +83,7 @@ export function ChannelValueTable({
                 ticket={row.ratios['average-ticket']}
                 perMql={row.ratios['revenue-per-mql']}
                 label={labels[row.channel] ?? row.channel}
-                color={seriesColorOf(order, row.channel)}
+                color={colorOf(colors, row.channel)}
                 focused={row.channel === highlight}
               />
             ))}

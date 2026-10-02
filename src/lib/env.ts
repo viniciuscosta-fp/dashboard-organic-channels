@@ -24,7 +24,7 @@ const envSchema = z
     GOALS_SHEET_RANGE: z.string().min(1).default('metas!A:D'),
 
     /** Intervalo da aba de cadastro de canais, na mesma planilha. */
-    CHANNELS_SHEET_RANGE: z.string().min(1).default('canais!A:C'),
+    CHANNELS_SHEET_RANGE: z.string().min(1).default('canais!A:D'),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== 'sheets') return

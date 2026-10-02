@@ -1,17 +1,17 @@
 import Link from 'next/link'
 
-import type { ResolvedChannel } from '@/lib/data/channel-catalog'
-import { seriesColorOf } from '@/lib/series-colors'
+import type { ChannelSection } from '@/lib/data/channel-catalog'
+import { colorOf } from '@/lib/series-colors'
 
 interface ChannelPickerProps {
-  /** Canais do catálogo, na ordem do cadastro. */
-  channels: ResolvedChannel[]
+  /** Canais do catálogo, na ordem canônica, já divididos por grupo. */
+  sections: ChannelSection[]
   /** Canal em foco, ou `null` para o consolidado. */
   current: string | null
   /** Parâmetros dos outros eixos, preservados ao trocar de canal. */
   baseQuery: Record<string, string>
-  /** Ordem canônica, para o ponto de cor casar com o dos gráficos e tabelas. */
-  order: string[]
+  /** Cor de cada canal, para o ponto casar com o dos gráficos e tabelas. */
+  colors: Record<string, string>
 }
 
 /**
@@ -25,18 +25,23 @@ interface ChannelPickerProps {
  * Segue o padrão do seletor de período: links, sem JavaScript, e o estado
  * inteiro compartilhável por URL.
  *
- * O ponto de cor não é decoração — é onde se aprende o par canal↔cor que os
- * gráficos e as tabelas usam. O rótulo ao lado carrega a mesma informação em
- * texto, então nada aqui depende de distinguir matizes.
+ * Com dez ou mais canais, uma fileira única de pílulas passava de duas linhas
+ * sem ordem nenhuma. Agora cada grupo tem a sua linha, com o nome do grupo à
+ * esquerda — é o que permite achar um canal pela família dele.
+ *
+ * O ponto de cor diz o grupo; o rótulo ao lado diz o canal. Nada aqui depende
+ * de distinguir matizes.
  */
-export function ChannelPicker({ channels, current, baseQuery, order }: ChannelPickerProps) {
+export function ChannelPicker({ sections, current, baseQuery, colors }: ChannelPickerProps) {
   const pill = (active: boolean) =>
     active
       ? 'bg-ink text-surface flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium'
       : 'ring-hairline text-ink-secondary hover:text-ink flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1'
 
+  const hasGroups = sections.some((section) => section.label !== null)
+
   return (
-    <nav aria-label="Canal">
+    <nav aria-label="Canal" className="space-y-1.5">
       <ul className="flex flex-wrap gap-1.5">
         <li>
           <Link
@@ -48,27 +53,77 @@ export function ChannelPicker({ channels, current, baseQuery, order }: ChannelPi
           </Link>
         </li>
 
-        {channels.map((channel) => {
-          const active = channel.channel === current
-
-          return (
-            <li key={channel.channel}>
-              <Link
-                href={{ pathname: '/', query: { ...baseQuery, canal: channel.channel } }}
-                aria-current={active ? 'page' : undefined}
-                className={pill(active)}
-              >
-                <span
-                  aria-hidden
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: seriesColorOf(order, channel.channel) }}
-                />
-                {channel.label}
-              </Link>
-            </li>
-          )
-        })}
+        {/* Sem grupos cadastrados, os canais seguem na mesma fileira de antes. */}
+        {hasGroups
+          ? null
+          : sections
+              .flatMap((section) => section.channels)
+              .map((channel) => (
+                <li key={channel.channel}>
+                  <ChannelLink
+                    channel={channel.channel}
+                    label={channel.label}
+                    color={colorOf(colors, channel.channel)}
+                    active={channel.channel === current}
+                    baseQuery={baseQuery}
+                    className={pill(channel.channel === current)}
+                  />
+                </li>
+              ))}
       </ul>
+
+      {hasGroups
+        ? sections.map((section, index) => (
+            <div
+              key={section.label ?? `sem-grupo-${index}`}
+              className="flex flex-col gap-1.5 sm:flex-row sm:items-start"
+            >
+              <span className="text-ink-muted shrink-0 pt-1.5 text-xs sm:w-24">
+                {section.label ?? 'Sem grupo'}
+              </span>
+              <ul className="flex flex-wrap gap-1.5" aria-label={section.label ?? 'Sem grupo'}>
+                {section.channels.map((channel) => (
+                  <li key={channel.channel}>
+                    <ChannelLink
+                      channel={channel.channel}
+                      label={channel.label}
+                      color={colorOf(colors, channel.channel)}
+                      active={channel.channel === current}
+                      baseQuery={baseQuery}
+                      className={pill(channel.channel === current)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        : null}
     </nav>
+  )
+}
+
+interface ChannelLinkProps {
+  channel: string
+  label: string
+  color: string
+  active: boolean
+  baseQuery: Record<string, string>
+  className: string
+}
+
+function ChannelLink({ channel, label, color, active, baseQuery, className }: ChannelLinkProps) {
+  return (
+    <Link
+      href={{ pathname: '/', query: { ...baseQuery, canal: channel } }}
+      aria-current={active ? 'page' : undefined}
+      className={className}
+    >
+      <span
+        aria-hidden
+        className="size-2 shrink-0 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      {label}
+    </Link>
   )
 }

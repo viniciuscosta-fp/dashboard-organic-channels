@@ -162,6 +162,30 @@ canal.
 Como o escopo muda o significado de metade da tela, todo card nomeia o próprio
 escopo no `hint`, e `ScopeNotice` diz em uma frase o que mudou e o que não mudou.
 
+## Muitos canais e grupos
+
+O dashboard é desenhado para até 15 canais, organizados em **grupos** (a coluna
+opcional `group` da aba `canais`). Três peças sustentam isso, todas puras e
+calculadas uma vez em `page.tsx`:
+
+- **Ordem canônica.** `resolveChannels` junta os canais de um grupo na posição do
+  primeiro deles pela `order`. É a ordem de seletor, painéis e tabelas de
+  conversão e valor, e a base de `groupSections`, que divide a tela em seções
+- **Cor por grupo.** `channelColors` dá um slot de `--series-1..5` por grupo, e
+  cinza do sexto em diante — nunca recicla. Canal sem grupo é um grupo de um só,
+  então a planilha sem a coluna se comporta como antes. A cor diz a família; o
+  nome, sempre ao lado, diz o canal
+- **Urgência.** `sortByUrgency` ordena a tabela de aderência pelo pior status de
+  cada canal, e `summarizeChannelStatus` alimenta o bloco "Situação dos canais",
+  que responde "quem está em risco" sem rolar quarenta linhas
+
+A evolução por canal é _small multiples_ — um painel por canal, com escala
+própria — e não um gráfico com uma linha por canal. Ver
+[`decisions/0009`](decisions/0009-mais-canais-e-grupos.md).
+
+Nada disso toca a camada de cálculo nem o cache: `computeAdherence` e as demais
+funções já tratavam canais como lista de tamanho livre.
+
 ## Estado na URL
 
 São quatro eixos independentes: período (`?periodo=` ou `?de=&ate=`), métrica do

@@ -247,10 +247,16 @@ export interface ChannelInfo {
   label: string
   /** Posição na tela; menor aparece antes. */
   order: number
+  /**
+   * Família do canal — ex.: orgânico, pago. Opcional: planilha sem a coluna
+   * `group`, ou célula vazia, deixa o canal sem grupo. Ver docs/decisions/0009.
+   */
+  group?: string
 }
 
 export const channelInfoSchema = z.object({
   channel: z.string().min(1, 'canal não pode ser vazio'),
   label: z.string().min(1, 'rótulo não pode ser vazio'),
   order: z.coerce.number().int('ordem deve ser inteira'),
+  group: z.string().min(1).optional(),
 }) satisfies z.ZodType<ChannelInfo>

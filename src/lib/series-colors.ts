@@ -1,14 +1,16 @@
+import type { ChannelCatalog } from './data/channel-catalog'
+
 /**
- * Slots categóricos de cor, um por canal.
+ * Slots categóricos de cor, um por **grupo** de canais.
  *
  * Nomes de variável CSS, nunca hex: os valores vivem em `globals.css`, foram
  * validados para daltonismo e contraste nos dois modos, e trocar um exige
  * revalidar a paleta inteira.
  *
- * A cor segue o **canal**, não a posição dele em nenhum ranking: filtrar ou
- * reordenar não pode repintar os canais que sobraram. Por isso o slot é
- * escolhido pela posição na ordem canônica do catálogo, e não pela posição na
- * lista que está sendo renderizada.
+ * A cor diz a família do canal; o nome diz qual canal é. Com dez ou quinze
+ * canais não existe paleta categórica que se leia com segurança, então nenhum
+ * bloco da tela identifica canal só por cor — todo ponto de cor vem com rótulo.
+ * Ver docs/decisions/0009.
  */
 export const SERIES_COLORS = [
   'var(--series-1)',
@@ -16,19 +18,34 @@ export const SERIES_COLORS = [
   'var(--series-3)',
   'var(--series-4)',
   'var(--series-5)',
-]
+] as const
 
 /**
- * Cor do canal, pela posição dele na ordem canônica.
+ * Cor de quem não tem slot: grupo além do quinto, ou canal fora do catálogo.
  *
- * Canal fora da ordem — o que só acontece com canal que tem meta mas nem
- * cadastro nem dado no período — recebe cinza neutro em vez de tomar
- * emprestado o slot de outro canal. Cor duplicada mentiria sobre identidade;
- * cinza diz "este canal não tem slot", que é a verdade.
+ * Nunca se recicla um slot. Cor repetida mentiria sobre identidade; cinza diz
+ * "este grupo não tem cor própria", que é a verdade.
  */
-export function seriesColorOf(order: readonly string[], channel: string): string {
-  const index = order.indexOf(channel)
-  if (index === -1) return 'var(--ink-muted)'
+export const NEUTRAL_SERIES_COLOR = 'var(--ink-muted)'
 
-  return SERIES_COLORS[index % SERIES_COLORS.length]
+/**
+ * Cor de cada canal do catálogo, pelo slot do seu grupo.
+ *
+ * O slot é a posição do grupo na ordem canônica, não a posição do canal em
+ * ranking nenhum: filtrar ou ordenar uma tabela não repinta nada.
+ */
+export function channelColors(catalog: ChannelCatalog): Record<string, string> {
+  const slotOf = new Map(catalog.groups.map((group, index) => [group.key, index]))
+
+  return Object.fromEntries(
+    catalog.channels.map((entry) => {
+      const slot = slotOf.get(entry.group.key) ?? Number.POSITIVE_INFINITY
+      return [entry.channel, SERIES_COLORS[slot] ?? NEUTRAL_SERIES_COLOR]
+    }),
+  )
+}
+
+/** Cor de um canal, com o neutro para quem não está no mapa. */
+export function colorOf(colors: Readonly<Record<string, string>>, channel: string): string {
+  return colors[channel] ?? NEUTRAL_SERIES_COLOR
 }

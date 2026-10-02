@@ -5,8 +5,9 @@ import { METRICS, type Metric, type MonthlyGoal } from './types'
  * Metas de exemplo, calibradas contra o que `mock-funnel-repository` gera.
  *
  * Os alvos foram escolhidos para o dashboard mostrar os três status de uma vez:
- * `organic_site` e `compare` fecham perto da meta, `blog_fluencypass` e
- * `ai_referrals` ficam na faixa de atenção e `brand` aparece em risco. Um mock
+ * `organic_site`, `compare`, `paid_search` e `social_instagram` fecham perto da
+ * meta; `blog_fluencypass`, `ai_referrals`, `paid_display` e `social_youtube`
+ * ficam na faixa de atenção; `brand` e `paid_social` aparecem em risco. Um mock
  * em que tudo bate a meta não exercita a parte do dashboard que existe
  * justamente para avisar quando algo não bate.
  */
@@ -18,6 +19,11 @@ const GOAL_BASE: Record<string, Record<Metric, number>> = {
   compare: { revenue: 31000, mqls: 124, opportunities: 36, customers: 12 },
   brand: { revenue: 56000, mqls: 118, opportunities: 43, customers: 17 },
   ai_referrals: { revenue: 28500, mqls: 122, opportunities: 36, customers: 10 },
+  paid_search: { revenue: 40500, mqls: 240, opportunities: 60, customers: 16 },
+  paid_social: { revenue: 21200, mqls: 255, opportunities: 46, customers: 10 },
+  paid_display: { revenue: 4700, mqls: 83, opportunities: 12, customers: 3 },
+  social_instagram: { revenue: 8600, mqls: 85, opportunities: 17, customers: 4 },
+  social_youtube: { revenue: 10200, mqls: 75, opportunities: 16, customers: 4 },
 }
 
 const REFERENCE_MONTH = '2026-08'

@@ -2,6 +2,7 @@ import { addDays, monthOf, startOfWeek } from '../business-days'
 import { formatDayMonth, formatMonth } from '../format'
 import type { DateRange } from '../period'
 import { listChannels } from './funnel-query'
+import type { ChannelAdherence, GoalStatus, MetricAdherence } from './goal-math'
 import { safeRatio } from './ratio'
 import {
   FUNNEL_RATIO_DEFINITIONS,
@@ -11,6 +12,7 @@ import {
   type FunnelSnapshot,
   type FunnelStage,
   type FunnelTotals,
+  type Metric,
 } from './types'
 
 /**
@@ -125,6 +127,98 @@ export function buildTrendData(
       label: bucketLabel(date, granularity),
       channels: values,
     }))
+}
+
+/**
+ * Status em ordem de urgência: o que precisa de ação primeiro.
+ *
+ * `sem-meta` fica por último porque não é um alerta — é a ausência de régua.
+ */
+export const STATUS_SEVERITY: readonly GoalStatus[] = ['risco', 'atencao', 'no-ritmo', 'sem-meta']
+
+function severityOf(status: GoalStatus): number {
+  return STATUS_SEVERITY.indexOf(status)
+}
+
+/**
+ * O status mais urgente entre as métricas de um canal.
+ *
+ * Métrica sem meta não puxa o canal para `sem-meta` se outra métrica tem régua:
+ * o canal só é `sem-meta` quando nenhuma métrica dele tem meta.
+ */
+export function worstStatus(metrics: readonly MetricAdherence[]): GoalStatus {
+  let worst: GoalStatus = 'sem-meta'
+
+  for (const { status } of metrics) {
+    if (status !== 'sem-meta' && (worst === 'sem-meta' || severityOf(status) < severityOf(worst))) {
+      worst = status
+    }
+  }
+
+  return worst
+}
+
+/**
+ * Canais do mais urgente para o menos, com a ordem canônica como desempate.
+ *
+ * Com dez ou quinze canais a tabela de aderência passa de quarenta linhas; na
+ * ordem do cadastro, o canal em risco podia estar no fim dela. O desempate pela
+ * ordem canônica mantém a posição estável entre recargas.
+ */
+export function sortByUrgency(
+  channels: readonly ChannelAdherence[],
+  order: readonly string[],
+): ChannelAdherence[] {
+  const position = (channel: string) => {
+    const index = order.indexOf(channel)
+    return index === -1 ? Number.POSITIVE_INFINITY : index
+  }
+
+  return [...channels].sort(
+    (a, b) =>
+      severityOf(worstStatus(a.metrics)) - severityOf(worstStatus(b.metrics)) ||
+      position(a.channel) - position(b.channel) ||
+      a.channel.localeCompare(b.channel),
+  )
+}
+
+/** Um canal dentro de um status, com as métricas que o puseram ali. */
+export interface ChannelStatusEntry {
+  channel: string
+  /** Métricas no status do canal. Vazio para `sem-meta`. */
+  metrics: Metric[]
+}
+
+export interface StatusGroup {
+  status: GoalStatus
+  channels: ChannelStatusEntry[]
+}
+
+/**
+ * Quantos canais estão em cada status, e quais.
+ *
+ * Um canal entra uma vez só, no seu pior status. Devolve todos os status, mesmo
+ * os vazios: "zero canais em risco" é a resposta que se quer ver, não um bloco
+ * que some.
+ */
+export function summarizeChannelStatus(
+  channels: readonly ChannelAdherence[],
+  order: readonly string[],
+): StatusGroup[] {
+  const sorted = sortByUrgency(channels, order)
+
+  return STATUS_SEVERITY.map((status) => ({
+    status,
+    channels: sorted
+      .filter((entry) => worstStatus(entry.metrics) === status)
+      .map((entry) => ({
+        channel: entry.channel,
+        metrics:
+          status === 'sem-meta'
+            ? []
+            : entry.metrics.filter((metric) => metric.status === status).map((m) => m.metric),
+      })),
+  }))
 }
 
 /**

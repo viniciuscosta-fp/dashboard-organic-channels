@@ -68,6 +68,20 @@ export function buildColumnIndex<Column extends string>(
   return index
 }
 
+/**
+ * Posição de uma coluna opcional, ou `undefined` quando o cabeçalho não a tem.
+ *
+ * Mesma comparação de `buildColumnIndex`. Existe para que uma coluna nova possa
+ * entrar no contrato sem derrubar a planilha que ainda não a tem.
+ */
+export function findOptionalColumn(
+  header: readonly SheetCell[],
+  column: string,
+): number | undefined {
+  const position = header.findIndex((cell) => cellText(cell).toLowerCase() === column)
+  return position === -1 ? undefined : position
+}
+
 /** Mensagem de erro de linha, com o número que a pessoa vê na planilha. */
 export function invalidRowError(
   sheetLabel: string,

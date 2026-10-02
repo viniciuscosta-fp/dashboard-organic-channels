@@ -18,16 +18,16 @@
  *   1. Preencha WEBHOOK_URL na seção CONFIGURAÇÃO.
  *   2. Rode `prepararPlanilha()`. Autorize os acessos que o Google pedir.
  *      Isso cria as abas `funil`, `metas` e `canais` com o cabeçalho certo.
- *   3. Rode `coletarOntem()` e confira as cinco linhas que aparecerem na aba
- *      `funil` contra o que a HubSpot mostra para o mesmo dia.
+ *   3. Rode `coletarOntem()` e confira as linhas que aparecerem na aba `funil`
+ *      (uma por canal de CANAIS) contra o que a HubSpot mostra para o mesmo dia.
  *
  * ----------------------------------------------------------------------------
  * CARGA HISTÓRICA — faça em etapas, nesta ordem
  * ----------------------------------------------------------------------------
  *
  *   1. `coletarOntem()`              → confira os números contra a HubSpot
- *   2. `coletarOntem()` de novo      → tem que continuar 5 linhas, não 10
- *   3. `rodarBackfill()` numa semana → 35 linhas
+ *   2. `coletarOntem()` de novo      → mesmo número de linhas, não o dobro
+ *   3. `rodarBackfill()` numa semana → 7 × o número de canais
  *   4. `rodarBackfill()` num mês     → exercita a retomada
  *   5. `rodarBackfill()` no resto do período
  *
@@ -35,7 +35,7 @@
  * ajuste as duas, selecione `rodarBackfill` na lista de funções e execute.
  *
  * Cada etapa valida algo diferente. Fatiar assim faz um erro de mapeamento
- * aparecer em cinco linhas em vez de novecentas.
+ * aparecer em uma linha por canal em vez de milhares.
  *
  * ----------------------------------------------------------------------------
  * GATILHOS — só depois que a carga histórica estiver limpa
@@ -108,17 +108,19 @@ var WEBHOOK_URL = 'COLE_A_URL_DO_WEBHOOK_AQUI'
  * Canais coletados, com o nome que aparece no dashboard.
  *
  * `chave` é o valor enviado ao webhook e precisa ser uma das chaves que ele
- * aceita. `rotulo` é livre — é o nome exibido na tela.
+ * aceita. `rotulo` é livre — é o nome exibido na tela. `grupo` é a família do
+ * canal (ex.: Orgânico, Pago): canais do mesmo grupo dividem a cor e a seção no
+ * dashboard. Pode ficar vazio.
  *
  * Para incluir um canal novo: acrescente a linha aqui e rode
  * `prepararPlanilha()`, que sincroniza a aba `canais`.
  */
 var CANAIS = [
-  { chave: 'organic_site', rotulo: 'Organic Search Site' },
-  { chave: 'blog_fluencypass', rotulo: 'Organic Search (Blog - FP)' },
-  { chave: 'compare', rotulo: 'Organic Search (Blog - Compare)' },
-  { chave: 'brand', rotulo: 'Organic Search (Brand)' },
-  { chave: 'ai_referrals', rotulo: 'Referências de IA' },
+  { chave: 'organic_site', rotulo: 'Organic Search Site', grupo: 'Orgânico' },
+  { chave: 'blog_fluencypass', rotulo: 'Organic Search (Blog - FP)', grupo: 'Orgânico' },
+  { chave: 'compare', rotulo: 'Organic Search (Blog - Compare)', grupo: 'Orgânico' },
+  { chave: 'brand', rotulo: 'Organic Search (Brand)', grupo: 'Orgânico' },
+  { chave: 'ai_referrals', rotulo: 'Referências de IA', grupo: 'Orgânico' },
 ]
 
 /**
@@ -150,7 +152,7 @@ var ABA_CANAIS = 'canais'
 
 var COLUNAS = ['date', 'channel', 'revenue', 'mqls', 'opportunities', 'customers']
 var COLUNAS_METAS = ['month', 'channel', 'metric', 'target']
-var COLUNAS_CANAIS = ['channel', 'label', 'order']
+var COLUNAS_CANAIS = ['channel', 'label', 'order', 'group']
 
 /**
  * O Apps Script encerra a execução em 6 minutos. Paramos aos 4,5 para sobrar
@@ -555,10 +557,18 @@ function criarAba_(ss, nome, colunas) {
 /**
  * Alinha a aba `canais` com a lista `CANAIS`.
  *
- * Só acrescenta o que falta. Rótulo e ordem ajustados na planilha são
+ * Só acrescenta o que falta. Rótulo, ordem e grupo ajustados na planilha são
  * preservados — a aba existe justamente para essa edição não depender de código.
+ *
+ * Aba criada antes da coluna `group` ganha o cabeçalho na coluna D, se ela
+ * estiver livre. O dashboard aceita a aba sem a coluna; só não agrupa.
  */
 function sincronizarCanais_(sh) {
+  var cabecalhoGrupo = sh.getRange(1, COLUNAS_CANAIS.length)
+  if (String(cabecalhoGrupo.getValue()).trim() === '') {
+    cabecalhoGrupo.setValue('group').setFontWeight('bold')
+  }
+
   var valores = sh.getDataRange().getValues()
   var cadastrados = {}
 
@@ -569,7 +579,7 @@ function sincronizarCanais_(sh) {
   var novas = []
   for (var j = 0; j < CANAIS.length; j++) {
     if (!cadastrados[CANAIS[j].chave]) {
-      novas.push([CANAIS[j].chave, CANAIS[j].rotulo, j + 1])
+      novas.push([CANAIS[j].chave, CANAIS[j].rotulo, j + 1, CANAIS[j].grupo || ''])
     }
   }
 

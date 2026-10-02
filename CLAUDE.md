@@ -99,7 +99,7 @@ Três abas, todas com colunas mapeadas por nome e nunca por posição:
 | -------- | -------------------- | ------------------------------------------------------------------ |
 | `funil`  | dia e canal          | `date`, `channel`, `revenue`, `mqls`, `opportunities`, `customers` |
 | `metas`  | mês, canal e métrica | `month`, `channel`, `metric`, `target`                             |
-| `canais` | canal                | `channel`, `label`, `order`                                        |
+| `canais` | canal                | `channel`, `label`, `order` e, opcional, `group`                   |
 
 Quem escreve é `scripts/apps-script/coleta-diaria.js`, que roda na planilha e
 consulta o webhook de métricas por canal. Ele grava por **upsert**: dia e canal
@@ -130,7 +130,9 @@ Receita usa schema decimal e formatação em reais; contagens são inteiras. Use
 ## Cores e gráficos
 
 Nunca escreva hex em componente — use os tokens de `src/app/globals.css`.
-`--series-1..3` identificam canais; `--stage-1..3`, etapas do funil. A exceção
+`--series-1..5` identificam **grupos** de canais, sempre via `channelColors`;
+`--stage-1..3`, etapas do funil. O dashboard é desenhado para até 15 canais:
+cor nunca identifica canal sozinha, o nome sempre vai junto (decisão 0009). A exceção
 é a paleta de status em `status-badge.tsx`, fixa e independente de tema.
 
 Os hexes foram validados para daltonismo e contraste nos modos claro e escuro.

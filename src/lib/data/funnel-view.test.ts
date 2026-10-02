@@ -6,9 +6,108 @@ import {
   buildTrendData,
   conversionWeekDeltas,
   MAX_SEMANAS_EXIBIDAS,
+  sortByUrgency,
+  summarizeChannelStatus,
   trendGranularity,
+  worstStatus,
 } from './funnel-view'
-import type { FunnelSnapshot, FunnelTotals } from './types'
+import type { ChannelAdherence, GoalStatus, MetricAdherence } from './goal-math'
+import { METRICS, type FunnelSnapshot, type FunnelTotals } from './types'
+
+/** Aderência mínima de um canal: só o status de cada métrica importa aqui. */
+function adherence(channel: string, statuses: GoalStatus[]): ChannelAdherence {
+  return {
+    channel,
+    metrics: statuses.map(
+      (status, index) => ({ metric: METRICS[index], status }) as MetricAdherence,
+    ),
+  }
+}
+
+describe('worstStatus', () => {
+  it('devolve o status mais urgente entre as métricas', () => {
+    expect(worstStatus(adherence('a', ['no-ritmo', 'atencao', 'risco']).metrics)).toBe('risco')
+    expect(worstStatus(adherence('a', ['no-ritmo', 'atencao']).metrics)).toBe('atencao')
+  })
+
+  it('ignora métrica sem meta quando outra tem régua', () => {
+    expect(worstStatus(adherence('a', ['sem-meta', 'no-ritmo']).metrics)).toBe('no-ritmo')
+  })
+
+  it('só é sem meta quando nenhuma métrica tem meta', () => {
+    expect(worstStatus(adherence('a', ['sem-meta', 'sem-meta']).metrics)).toBe('sem-meta')
+    expect(worstStatus([])).toBe('sem-meta')
+  })
+})
+
+describe('sortByUrgency', () => {
+  const order = ['c1', 'c2', 'c3', 'c4', 'c5']
+
+  it('põe risco antes de atenção, antes de no ritmo, antes de sem meta', () => {
+    const sorted = sortByUrgency(
+      [
+        adherence('c1', ['sem-meta']),
+        adherence('c2', ['no-ritmo']),
+        adherence('c3', ['no-ritmo', 'risco']),
+        adherence('c4', ['atencao']),
+      ],
+      order,
+    )
+
+    expect(sorted.map((entry) => entry.channel)).toEqual(['c3', 'c4', 'c2', 'c1'])
+  })
+
+  it('desempata pela ordem canônica, não pela ordem de entrada', () => {
+    const sorted = sortByUrgency(
+      [adherence('c5', ['risco']), adherence('c2', ['risco']), adherence('c4', ['risco'])],
+      order,
+    )
+
+    expect(sorted.map((entry) => entry.channel)).toEqual(['c2', 'c4', 'c5'])
+  })
+
+  it('põe canal fora da ordem depois dos conhecidos do mesmo status', () => {
+    const sorted = sortByUrgency([adherence('fora', ['risco']), adherence('c3', ['risco'])], order)
+
+    expect(sorted.map((entry) => entry.channel)).toEqual(['c3', 'fora'])
+  })
+
+  it('não altera a lista recebida', () => {
+    const input = [adherence('c2', ['no-ritmo']), adherence('c1', ['risco'])]
+
+    sortByUrgency(input, order)
+
+    expect(input.map((entry) => entry.channel)).toEqual(['c2', 'c1'])
+  })
+})
+
+describe('summarizeChannelStatus', () => {
+  const order = ['c1', 'c2', 'c3']
+
+  it('põe cada canal uma vez só, no seu pior status, com as métricas que o puseram ali', () => {
+    const summary = summarizeChannelStatus(
+      [
+        adherence('c1', ['risco', 'atencao', 'risco']),
+        adherence('c2', ['no-ritmo', 'atencao']),
+        adherence('c3', ['sem-meta', 'sem-meta']),
+      ],
+      order,
+    )
+
+    expect(summary).toEqual([
+      { status: 'risco', channels: [{ channel: 'c1', metrics: ['revenue', 'opportunities'] }] },
+      { status: 'atencao', channels: [{ channel: 'c2', metrics: ['mqls'] }] },
+      { status: 'no-ritmo', channels: [] },
+      { status: 'sem-meta', channels: [{ channel: 'c3', metrics: [] }] },
+    ])
+  })
+
+  it('devolve os quatro status mesmo sem nenhum canal', () => {
+    expect(summarizeChannelStatus([], order).map((group) => group.channels.length)).toEqual([
+      0, 0, 0, 0,
+    ])
+  })
+})
 
 function totals(values: Partial<FunnelTotals>): FunnelTotals {
   return {

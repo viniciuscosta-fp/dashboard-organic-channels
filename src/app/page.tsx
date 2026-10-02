@@ -13,7 +13,8 @@ import { ScopeNotice } from '@/components/molecules/scope-notice'
 import { BurnupChart } from '@/components/organisms/burnup-chart'
 import { ChannelConversionTable } from '@/components/organisms/channel-conversion-table'
 import { ChannelGoalTable } from '@/components/organisms/channel-goal-table'
-import { ChannelTrendChart } from '@/components/organisms/channel-trend-chart'
+import { ChannelStatusSummary } from '@/components/organisms/channel-status-summary'
+import { ChannelTrendGrid } from '@/components/organisms/channel-trend-grid'
 import { ChannelValueTable } from '@/components/organisms/channel-value-table'
 import { DataError } from '@/components/organisms/data-error'
 import { FunnelStagesChart } from '@/components/organisms/funnel-stages-chart'
@@ -23,7 +24,7 @@ import {
   parseDashboardParams,
   resolveChannelParam,
 } from '@/lib/dashboard-params'
-import { resolveChannels } from '@/lib/data/channel-catalog'
+import { groupSections, resolveChannels } from '@/lib/data/channel-catalog'
 import { computeRatioMatrix } from '@/lib/data/funnel-efficiency'
 import { applyFunnelQuery, listChannels, sumMetrics } from '@/lib/data/funnel-query'
 import {
@@ -38,12 +39,15 @@ import {
   buildTrendData,
   conversionWeekDeltas,
   MAX_SEMANAS_EXIBIDAS,
+  sortByUrgency,
+  summarizeChannelStatus,
   trendGranularity,
 } from '@/lib/data/funnel-view'
 import { computeAdherence, dataRangeWithComparisonFor, firstDataDate } from '@/lib/data/goal-math'
 import { computePeriodComparison } from '@/lib/data/period-comparison'
 import { FUNNEL_RATIO_DEFINITIONS } from '@/lib/data/types'
 import { todayInBusinessTimezone } from '@/lib/period'
+import { channelColors } from '@/lib/series-colors'
 
 export default function Page({ searchParams }: PageProps<'/'>) {
   return (
@@ -101,6 +105,10 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
   const channelLabels = Object.fromEntries(
     catalog.channels.map((entry) => [entry.channel, entry.label]),
   )
+  const channelSections = groupSections(catalog)
+  // Uma cor por grupo, calculada uma vez: seletor, gráficos e tabelas leem do
+  // mesmo mapa, então a cor de um canal nunca discorda entre dois blocos.
+  const colors = channelColors(catalog)
 
   // A validação do canal só fecha aqui: a lista de canais válidos vem do dado,
   // que o parser da URL ainda não tinha.
@@ -116,10 +124,10 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
     focusChannel: channel,
   })
 
-  // A tabela segue a ordem do cadastro, não a ordem alfabética do cálculo.
-  const byChannel = [...report.byChannel].sort(
-    (a, b) => channelOrder.indexOf(a.channel) - channelOrder.indexOf(b.channel),
-  )
+  // A tabela de aderência abre pelo canal mais urgente: com dez ou quinze
+  // canais, na ordem do cadastro o canal em risco podia estar na linha 40.
+  const byChannel = sortByUrgency(report.byChannel, channelOrder)
+  const statusSummary = summarizeChannelStatus(report.byChannel, channelOrder)
 
   // O escopo muda os agregados do topo, nunca as tabelas de comparação: filtrar
   // uma tabela de comparação para uma linha só destrói o que a torna útil.
@@ -164,10 +172,10 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           baseQuery={dashboardSearchParams(dashboard, ['periodo'])}
         />
         <ChannelPicker
-          channels={catalog.channels}
+          sections={channelSections}
           current={channel}
           baseQuery={dashboardSearchParams(dashboard, ['canal'])}
-          order={channelOrder}
+          colors={colors}
         />
         <PeriodSummary
           timing={report.timing}
@@ -189,29 +197,43 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
           </div>
 
           <Card>
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <CardTitle
-                hint={`${scopeHint(channelLabel)} · acumulado no período contra a meta, com a continuação no ritmo atual`}
-              >
-                Aderência acumulada
-              </CardTitle>
-              <MetricTabs
-                current={metric}
-                baseQuery={dashboardSearchParams(dashboard, ['metrica'])}
-              />
-            </div>
-
-            <BurnupChart
-              points={report.burnup[metric]}
-              anchorDate={report.timing.lastDataDate}
-              metric={metric}
-            />
-            <ProjectionNote
-              confidence={scope.metrics.find((entry) => entry.metric === metric)!.confidence}
+            <CardTitle hint="Todos os canais · cada canal no seu pior status entre as quatro métricas">
+              Situação dos canais
+            </CardTitle>
+            <ChannelStatusSummary
+              groups={statusSummary}
+              labels={channelLabels}
+              colors={colors}
+              current={channel}
+              baseQuery={dashboardSearchParams(dashboard, ['canal'])}
             />
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          {/* Os dois blocos que o foco escopa ficam juntos, logo abaixo dos cartões. */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <CardTitle
+                  hint={`${scopeHint(channelLabel)} · acumulado no período contra a meta, com a continuação no ritmo atual`}
+                >
+                  Aderência acumulada
+                </CardTitle>
+                <MetricTabs
+                  current={metric}
+                  baseQuery={dashboardSearchParams(dashboard, ['metrica'])}
+                />
+              </div>
+
+              <BurnupChart
+                points={report.burnup[metric]}
+                anchorDate={report.timing.lastDataDate}
+                metric={metric}
+              />
+              <ProjectionNote
+                confidence={scope.metrics.find((entry) => entry.metric === metric)!.confidence}
+              />
+            </Card>
+
             <Card>
               <CardTitle
                 hint={`${scopeHint(channelLabel)} · total acumulado no período, por etapa`}
@@ -220,21 +242,34 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               </CardTitle>
               <FunnelStagesChart stages={buildStageData(sumMetrics(scopedSnapshots))} />
             </Card>
-
-            <Card>
-              <CardTitle
-                hint={`Todos os canais · MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}`}
-              >
-                Evolução por canal
-              </CardTitle>
-              <ChannelTrendChart
-                trend={buildTrendData(inPeriod, trendGranularity(range))}
-                channels={channelOrder}
-                labels={channelLabels}
-                highlight={channel}
-              />
-            </Card>
           </div>
+
+          <Card>
+            <CardTitle hint="Todos os canais · meta rateada por dias úteis · do canal mais urgente ao menos">
+              Aderência por canal
+            </CardTitle>
+            <ChannelGoalTable
+              channels={byChannel}
+              catalog={catalog}
+              colors={colors}
+              highlight={channel}
+              comparison={comparison}
+            />
+          </Card>
+
+          <Card>
+            <CardTitle
+              hint={`Todos os canais · MQLs por ${GRANULARITY_LABEL[trendGranularity(range)]}`}
+            >
+              Evolução por canal
+            </CardTitle>
+            <ChannelTrendGrid
+              trend={buildTrendData(inPeriod, trendGranularity(range))}
+              sections={channelSections}
+              colors={colors}
+              highlight={channel}
+            />
+          </Card>
 
           <Card>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -252,7 +287,7 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
               total={conversion.total}
               weeks={weeks}
               delta={conversionWeekDeltas(weeks)}
-              order={channelOrder}
+              colors={colors}
               labels={channelLabels}
               highlight={channel}
             />
@@ -265,22 +300,9 @@ async function Adherence({ searchParams }: { searchParams: PageProps<'/'>['searc
             <ChannelValueTable
               rows={conversion.byChannel}
               total={conversion.total}
-              order={channelOrder}
+              colors={colors}
               labels={channelLabels}
               highlight={channel}
-            />
-          </Card>
-
-          <Card>
-            <CardTitle hint="Todos os canais · meta rateada por dias úteis">
-              Aderência por canal
-            </CardTitle>
-            <ChannelGoalTable
-              channels={byChannel}
-              catalog={catalog}
-              order={channelOrder}
-              highlight={channel}
-              comparison={comparison}
             />
           </Card>
         </>
@@ -316,11 +338,13 @@ function DashboardSkeleton() {
           <div key={index} className="bg-surface ring-hairline h-28 rounded-xl ring-1" />
         ))}
       </div>
-      <div className="bg-surface ring-hairline h-96 rounded-xl ring-1" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
-        <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
+      <div className="bg-surface ring-hairline h-40 rounded-xl ring-1" />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="bg-surface ring-hairline h-96 rounded-xl ring-1 lg:col-span-2" />
+        <div className="bg-surface ring-hairline h-96 rounded-xl ring-1" />
       </div>
+      <div className="bg-surface ring-hairline h-96 rounded-xl ring-1" />
+      <div className="bg-surface ring-hairline h-80 rounded-xl ring-1" />
       <div className="bg-surface ring-hairline h-64 rounded-xl ring-1" />
       <div className="bg-surface ring-hairline h-56 rounded-xl ring-1" />
     </div>

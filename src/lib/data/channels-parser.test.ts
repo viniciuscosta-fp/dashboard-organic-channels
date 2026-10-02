@@ -65,4 +65,46 @@ describe('parseChannelRows', () => {
   it('rejeita ordem não numérica', () => {
     expect(() => parseChannelRows([header, ['brand', 'Brand', 'primeiro']])).toThrowError(/Linha 2/)
   })
+
+  describe('coluna group', () => {
+    const withGroup = ['channel', 'label', 'order', 'group']
+
+    it('lê o grupo quando a coluna existe', () => {
+      const [parsed] = parseChannelRows([withGroup, ['brand', 'Brand', 1, 'Orgânico']])
+
+      expect(parsed).toStrictEqual({
+        channel: 'brand',
+        label: 'Brand',
+        order: 1,
+        group: 'Orgânico',
+      })
+    })
+
+    it('aceita a planilha sem a coluna, deixando o canal sem grupo', () => {
+      const [parsed] = parseChannelRows([header, ['brand', 'Brand', 1]])
+
+      expect(parsed).toStrictEqual({ channel: 'brand', label: 'Brand', order: 1 })
+    })
+
+    it('trata célula de grupo vazia como canal sem grupo, não como erro', () => {
+      const rows = [withGroup, ['brand', 'Brand', 1, '   '], ['compare', 'Compare', 2, null]]
+
+      expect(parseChannelRows(rows).map((c) => c.group)).toEqual([undefined, undefined])
+    })
+
+    it('mapeia a coluna de grupo por nome, em qualquer posição e caixa', () => {
+      const [parsed] = parseChannelRows([
+        [' Group ', 'order', 'channel', 'label'],
+        ['Pago', 3, 'paid_search', 'Busca paga'],
+      ])
+
+      expect(parsed.group).toBe('Pago')
+    })
+
+    it('apara espaços nas bordas do grupo', () => {
+      const [parsed] = parseChannelRows([withGroup, ['brand', 'Brand', 1, '  Orgânico ']])
+
+      expect(parsed.group).toBe('Orgânico')
+    })
+  })
 })

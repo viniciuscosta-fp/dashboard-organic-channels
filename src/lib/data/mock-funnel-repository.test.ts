@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { isBusinessDay } from '../business-days'
 import { sumMetrics } from './funnel-query'
+import { MOCK_CHANNELS } from './mock-channel-repository'
 import { generateSnapshots, MockFunnelRepository } from './mock-funnel-repository'
 
 const AGOSTO = { from: '2026-08-01', to: '2026-08-31' }
@@ -10,10 +11,27 @@ describe('generateSnapshots', () => {
   it('gera uma linha por dia e canal, incluindo fim de semana', () => {
     const snapshots = generateSnapshots('2026-08-01', '2026-08-07')
 
-    expect(snapshots).toHaveLength(7 * 5)
+    expect(snapshots).toHaveLength(7 * 10)
     expect(new Set(snapshots.map((s) => s.channel))).toEqual(
-      new Set(['organic_site', 'blog_fluencypass', 'compare', 'brand', 'ai_referrals']),
+      new Set([
+        'organic_site',
+        'blog_fluencypass',
+        'compare',
+        'brand',
+        'ai_referrals',
+        'paid_search',
+        'paid_social',
+        'paid_display',
+        'social_instagram',
+        'social_youtube',
+      ]),
     )
+  })
+
+  it('gera exatamente os canais do cadastro de exemplo, nem mais nem menos', () => {
+    const generated = new Set(generateSnapshots('2026-08-03', '2026-08-03').map((s) => s.channel))
+
+    expect(generated).toEqual(new Set(MOCK_CHANNELS.map((c) => c.channel)))
   })
 
   it('é determinístico: a mesma consulta devolve os mesmos números', () => {

@@ -1,17 +1,18 @@
 import { StatusBadge } from '@/components/molecules/status-badge'
 import type { ChannelCatalog } from '@/lib/data/channel-catalog'
-import { labelOf } from '@/lib/data/channel-catalog'
+import { groupLabelOf, labelOf } from '@/lib/data/channel-catalog'
 import type { ChannelAdherence } from '@/lib/data/goal-math'
 import { findMetricComparison, type PeriodComparison } from '@/lib/data/period-comparison'
 import { METRIC_LABELS, type Metric } from '@/lib/data/types'
 import { formatMetricValue, formatRatio, formatSignedMetric, formatSignedRatio } from '@/lib/format'
-import { seriesColorOf } from '@/lib/series-colors'
+import { colorOf } from '@/lib/series-colors'
 
 interface ChannelGoalTableProps {
+  /** Canais na ordem de exibição — do mais urgente ao menos, vindo da rota. */
   channels: ChannelAdherence[]
   catalog: ChannelCatalog
-  /** Ordem canônica dos canais, para a cor casar com a do gráfico de linhas. */
-  order: string[]
+  /** Cor de cada canal, pelo slot do grupo, para casar com gráficos e seletor. */
+  colors: Record<string, string>
   /** Canal em foco. A tabela segue completa; a linha dele é que se destaca. */
   highlight?: string | null
   /**
@@ -24,13 +25,18 @@ interface ChannelGoalTableProps {
 /**
  * Aderência de cada canal, métrica por métrica.
  *
+ * Os canais chegam ordenados por urgência (`sortByUrgency`), não pela ordem do
+ * cadastro: com dez ou quinze canais são quarenta linhas ou mais, e o canal em
+ * risco precisa estar no topo. Por isso o grupo aparece por extenso sob o nome
+ * do canal — a ordem não junta mais os canais de uma mesma família.
+ *
  * É também a leitura alternativa em texto que as cores de série de contraste
  * mais baixo exigem: nenhum número do dashboard depende de distinguir matizes.
  */
 export function ChannelGoalTable({
   channels,
   catalog,
-  order,
+  colors,
   highlight = null,
   comparison = null,
 }: ChannelGoalTableProps) {
@@ -41,7 +47,10 @@ export function ChannelGoalTable({
       <table className={`w-full text-sm ${showsComparison ? 'min-w-[54rem]' : 'min-w-[48rem]'}`}>
         <thead>
           <tr className="text-ink-muted border-hairline border-b text-xs">
-            <th scope="col" className="py-2 pr-3 text-left font-medium">
+            <th
+              scope="col"
+              className="bg-surface sticky left-0 z-10 py-2 pr-3 text-left font-medium"
+            >
               Canal
             </th>
             <th scope="col" className="py-2 pr-3 text-left font-medium">
@@ -85,16 +94,21 @@ export function ChannelGoalTable({
                       scope="rowgroup"
                       rowSpan={entry.metrics.length}
                       aria-current={focused ? 'true' : undefined}
-                      className="text-ink py-2.5 pr-3 text-left align-top font-medium"
+                      className="bg-surface text-ink sticky left-0 z-10 py-2.5 pr-3 text-left align-top font-medium"
                     >
                       <span className="flex items-center gap-2">
                         <span
                           aria-hidden
                           className="mt-1 size-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: seriesColorOf(order, entry.channel) }}
+                          style={{ backgroundColor: colorOf(colors, entry.channel) }}
                         />
                         <span>
                           {labelOf(catalog, entry.channel)}
+                          {groupLabelOf(catalog, entry.channel) ? (
+                            <span className="text-ink-muted block text-xs font-normal">
+                              {groupLabelOf(catalog, entry.channel)}
+                            </span>
+                          ) : null}
                           {/* O destaque não pode viver só no peso da fonte. */}
                           {focused ? (
                             <span className="text-ink-muted block text-xs font-normal">
